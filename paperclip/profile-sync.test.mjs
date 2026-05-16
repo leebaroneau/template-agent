@@ -87,6 +87,50 @@ test('buildManagedAgentPayload inherits Hermes model settings from the profile c
   assert.equal(payload.adapterConfig.provider, 'openai-codex');
 });
 
+test('buildManagedAgentPayload adds shared operating pointers to capabilities', () => {
+  const payload = buildManagedAgentPayload({
+    agent: {
+      name: 'Researcher',
+      capabilities: 'Researches assigned market questions.',
+      adapterConfig: {},
+      metadata: {},
+    },
+    companyName: 'Acme',
+  });
+
+  assert.match(payload.capabilities, /Researches assigned market questions\./);
+  assert.match(payload.capabilities, /Delegation Protocol/);
+  assert.match(payload.capabilities, /\/data\/agent-stack\/delegation-protocol\.md/);
+  assert.match(payload.capabilities, /Org Chart/);
+  assert.match(payload.capabilities, /\/data\/agent-stack\/org-chart\.md/);
+  assert.match(payload.capabilities, /Learning Protocol/);
+  assert.match(payload.capabilities, /\/data\/agent-stack\/learning-protocol\.md/);
+  assert.equal(payload.capabilities.match(/Delegation Protocol/g).length, 1);
+  assert.equal(payload.capabilities.match(/Org Chart/g).length, 1);
+  assert.equal(payload.capabilities.match(/Learning Protocol/g).length, 1);
+});
+
+test('buildManagedAgentPayload does not duplicate shared operating pointers', () => {
+  const payload = buildManagedAgentPayload({
+    agent: {
+      name: 'Researcher',
+      capabilities: [
+        'Researches assigned market questions.',
+        'Delegation Protocol: Before doing work, read /data/agent-stack/delegation-protocol.md.',
+        'Org Chart: Before delegating across roles, read /data/agent-stack/org-chart.md.',
+        'Learning Protocol: At task start and finish, read /data/agent-stack/learning-protocol.md.',
+      ].join('\n'),
+      adapterConfig: {},
+      metadata: {},
+    },
+    companyName: 'Acme',
+  });
+
+  assert.equal(payload.capabilities.match(/Delegation Protocol/g).length, 1);
+  assert.equal(payload.capabilities.match(/Org Chart/g).length, 1);
+  assert.equal(payload.capabilities.match(/Learning Protocol/g).length, 1);
+});
+
 test('buildManagedAgentPayload keeps explicit agent model settings', () => {
   const payload = buildManagedAgentPayload({
     agent: {
@@ -123,6 +167,14 @@ test('ensureProfileHomes creates profile config, soul, and gbrain directory', as
     assert.equal(result.gbrainHome, join(root, 'gbrain/acme-researcher'));
     assert.equal(await readFile(join(result.hermesHome, 'config.yaml'), 'utf8'), '{}\n');
     assert.match(await readFile(join(result.hermesHome, 'SOUL.md'), 'utf8'), /Hermes/);
+    assert.match(
+      await readFile(join(result.hermesHome, 'DELEGATION_PROTOCOL.md'), 'utf8'),
+      /Delegation Protocol/,
+    );
+    assert.match(
+      await readFile(join(result.hermesHome, 'LEARNING_PROTOCOL.md'), 'utf8'),
+      /Learning Protocol/,
+    );
     await stat(result.gbrainHome);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -264,11 +316,33 @@ test('ensureProfileHomes copies safe default GBrain skill folders without databa
 test('reconcileAgents patches only hermes_local agents and records managed entries', async () => {
   const apiCalls = [];
   const homeCalls = [];
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-org-'));
   const result = await reconcileAgents({
     companies: [{ id: 'co_1', name: 'Acme, Inc.' }],
     listAgents: async () => [
-      { id: 'a_1', name: 'Researcher', adapterType: 'hermes_local', adapterConfig: {}, metadata: {} },
-      { id: 'a_2', name: 'Designer', adapterType: 'other', adapterConfig: {}, metadata: {} },
+      {
+        id: 'a_1',
+        name: 'Researcher',
+        role: 'assistant',
+        title: 'Research Agent',
+        capabilities: 'Researches assigned market questions.',
+        adapterType: 'hermes_local',
+        adapterConfig: {},
+        metadata: {
+          team: 'Growth',
+          reportsTo: 'CEO',
+        },
+      },
+      {
+        id: 'a_2',
+        name: 'Designer',
+        title: 'Design Agent',
+        adapterType: 'other',
+        adapterConfig: {},
+        metadata: {
+          team: 'Creative',
+        },
+      },
     ],
     patchAgent: async (agentId, payload) => {
       apiCalls.push({ agentId, payload });
@@ -286,6 +360,7 @@ test('reconcileAgents patches only hermes_local agents and records managed entri
     },
     manifest: { managedAgents: [] },
     paperclipAgentServerUrl: 'http://paperclip:3100',
+    orgMirrorRoot: root,
   });
 
   assert.deepEqual(homeCalls, ['acme-inc-researcher']);
@@ -297,6 +372,22 @@ test('reconcileAgents patches only hermes_local agents and records managed entri
   assert.equal(result.manifest.managedAgents.length, 1);
   assert.equal(result.manifest.managedAgents[0].agentId, 'a_1');
   assert.equal(result.manifest.managedAgents[0].profileSlug, 'acme-inc-researcher');
+
+  const orgJson = JSON.parse(await readFile(join(root, 'org-chart.json'), 'utf8'));
+  assert.equal(orgJson.companies.length, 1);
+  assert.equal(orgJson.companies[0].agents.length, 2);
+  assert.deepEqual(
+    orgJson.companies[0].agents.map((agent) => agent.name),
+    ['Researcher', 'Designer'],
+  );
+  assert.equal(orgJson.companies[0].agents[0].profileSlug, 'acme-inc-researcher');
+  assert.equal(orgJson.companies[0].agents[0].team, 'Growth');
+  assert.equal(orgJson.companies[0].agents[0].reportsTo, 'CEO');
+  assert.equal(orgJson.companies[0].agents[1].team, 'Creative');
+  assert.match(await readFile(join(root, 'org-chart.md'), 'utf8'), /Researcher/);
+  assert.match(await readFile(join(root, 'org-chart.md'), 'utf8'), /Designer/);
+
+  await rm(root, { recursive: true, force: true });
 });
 
 test('reconcileAgents archives missing managed agents after a successful company scan', async () => {
@@ -310,6 +401,7 @@ test('reconcileAgents archives missing managed agents after a successful company
     ensureHomes: async () => {
       throw new Error('ensureHomes should not be called');
     },
+    writeOrgMirror: async () => {},
     retireHomes: async (entry) => {
       archived.push(entry.profileSlug);
     },
@@ -352,6 +444,7 @@ test('reconcileAgents archives managed agents returned as terminated', async () 
     ensureHomes: async () => {
       throw new Error('ensureHomes should not be called');
     },
+    writeOrgMirror: async () => {},
     retireHomes: async (entry) => {
       archived.push(entry.profileSlug);
     },
@@ -415,6 +508,7 @@ test('profile-sync CLI one-shot provisions homes and patches Paperclip API', asy
       PAPERCLIP_AGENT_API_URL: 'http://127.0.0.1:3100',
       HERMES_DATA_ROOT: join(root, 'hermes'),
       GBRAIN_DATA_ROOT: join(root, 'gbrain'),
+      ORG_MIRROR_ROOT: join(root, 'agent-stack'),
       PROFILE_SYNC_MANIFEST_PATH: manifestPath,
       PROFILE_SYNC_TEMPLATE_DIR: join(process.cwd(), 'hermes-runtime/templates'),
     });

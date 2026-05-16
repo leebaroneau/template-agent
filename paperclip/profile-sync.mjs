@@ -23,6 +23,27 @@ const DEFAULT_TEMPLATE_DIR = '/opt/hermes-runtime/templates';
 const DEFAULT_MANIFEST_PATH = '/data/agent-stack/profile-sync/manifest.json';
 const DEFAULT_SYNC_API_BASE = 'http://paperclip:3100';
 const DEFAULT_AGENT_API_URL = 'http://127.0.0.1:3100';
+const DEFAULT_ORG_MIRROR_ROOT = '/data/agent-stack';
+const DELEGATION_PROTOCOL_PATH = '/data/agent-stack/delegation-protocol.md';
+const DELEGATION_PROTOCOL_FILE = 'DELEGATION_PROTOCOL.md';
+const DELEGATION_PROTOCOL_POINTER = [
+  `Delegation Protocol: Before doing or reassigning work, read ${DELEGATION_PROTOCOL_PATH}.`,
+  `If that shared file is unavailable, read ${DELEGATION_PROTOCOL_FILE} in your HERMES_HOME.`,
+  'Apply it before accepting, rerouting, creating, commenting on, or completing issues.',
+].join(' ');
+const ORG_CHART_MARKDOWN_PATH = '/data/agent-stack/org-chart.md';
+const ORG_CHART_JSON_PATH = '/data/agent-stack/org-chart.json';
+const ORG_CHART_POINTER = [
+  `Org Chart: Before delegating across roles, read ${ORG_CHART_MARKDOWN_PATH}.`,
+  `For structured routing details, use ${ORG_CHART_JSON_PATH}.`,
+].join(' ');
+const LEARNING_PROTOCOL_PATH = '/data/agent-stack/learning-protocol.md';
+const LEARNING_PROTOCOL_FILE = 'LEARNING_PROTOCOL.md';
+const LEARNING_PROTOCOL_POINTER = [
+  `Learning Protocol: At task start and finish, read ${LEARNING_PROTOCOL_PATH}.`,
+  `If that shared file is unavailable, read ${LEARNING_PROTOCOL_FILE} in your HERMES_HOME.`,
+  'Use your role-specific GBRAIN_HOME for durable learned summaries; do not crawl all of /data.',
+].join(' ');
 const HERMES_TEMPLATE_SKIP_DIRS = new Set([
   'profiles',
   'archive',
@@ -97,6 +118,7 @@ export function buildManagedAgentPayload({
     : {};
 
   return {
+    capabilities: withSharedOperatingPointers(agent.capabilities),
     adapterType: 'hermes_local',
     adapterConfig: {
       ...(hermesModelConfig?.model ? { model: hermesModelConfig.model } : {}),
@@ -138,6 +160,28 @@ function normalizeToolsets(toolsets) {
   return [...new Set(normalized)].join(',') || 'terminal,file,web';
 }
 
+function withSharedOperatingPointers(capabilities) {
+  let next = typeof capabilities === 'string' ? capabilities.trim() : '';
+
+  if (!next.includes(DELEGATION_PROTOCOL_PATH) && !/Delegation Protocol:/i.test(next)) {
+    next = appendCapabilityPointer(next, DELEGATION_PROTOCOL_POINTER);
+  }
+
+  if (!next.includes(ORG_CHART_MARKDOWN_PATH) && !/Org Chart:/i.test(next)) {
+    next = appendCapabilityPointer(next, ORG_CHART_POINTER);
+  }
+
+  if (!next.includes(LEARNING_PROTOCOL_PATH) && !/Learning Protocol:/i.test(next)) {
+    next = appendCapabilityPointer(next, LEARNING_PROTOCOL_POINTER);
+  }
+
+  return next;
+}
+
+function appendCapabilityPointer(capabilities, pointer) {
+  return capabilities ? `${capabilities}\n\n${pointer}` : pointer;
+}
+
 export async function ensureProfileHomes({
   profileSlug,
   hermesDataRoot = '/data/hermes',
@@ -176,6 +220,22 @@ export async function ensureProfileHomes({
       join(templateDir, 'SOUL.default.md'),
     ],
     join(hermesHome, 'SOUL.md'),
+  );
+
+  await copyFirstExistingIfMissing(
+    [
+      join(templateDir, DELEGATION_PROTOCOL_FILE),
+      join(hermesDataRoot, DELEGATION_PROTOCOL_FILE),
+    ],
+    join(hermesHome, DELEGATION_PROTOCOL_FILE),
+  );
+
+  await copyFirstExistingIfMissing(
+    [
+      join(templateDir, LEARNING_PROTOCOL_FILE),
+      join(hermesDataRoot, LEARNING_PROTOCOL_FILE),
+    ],
+    join(hermesHome, LEARNING_PROTOCOL_FILE),
   );
 
   await copyIfSourceExists(join(hermesDataRoot, '.env'), join(hermesHome, '.env'));
@@ -228,12 +288,14 @@ export async function reconcileAgents({
   patchAgent,
   ensureHomes = ensureProfileHomes,
   retireHomes = retireProfileHomes,
+  writeOrgMirror = writeOrgMirrorFiles,
   manifest = emptyManifest(),
   deleteMode = 'archive',
   paperclipAgentServerUrl = DEFAULT_AGENT_API_URL,
   hermesDataRoot = '/data/hermes',
   gbrainDataRoot = '/data/gbrain',
   templateDir = DEFAULT_TEMPLATE_DIR,
+  orgMirrorRoot = DEFAULT_ORG_MIRROR_ROOT,
   initGbrain = true,
 }) {
   const now = new Date().toISOString();
@@ -242,22 +304,35 @@ export async function reconcileAgents({
   const scannedCompanies = new Set();
   const activeAgentIds = new Set();
   const nextEntries = [];
+  const orgCompanies = [];
   let patched = 0;
   let provisioned = 0;
 
   for (const company of companies) {
     scannedCompanies.add(company.id);
     const agents = await listAgents(company.id);
+    const companyName = company.name || company.shortName || company.id;
+    const orgAgents = [];
 
     for (const agent of agents) {
-      if (!shouldManageAgent(agent)) continue;
-      if (isRetiredAgent(agent)) continue;
-
+      const managedAgent = shouldManageAgent(agent);
+      const retiredAgent = isRetiredAgent(agent);
       const previousEntry = previousByAgent.get(agent.id);
       const existingSlug = previousEntry?.profileSlug
         || agent.metadata?.agentStackProfileSlug
         || agent.metadata?.hermesProfile;
-      const profileSlug = desiredProfileSlug(company.name || company.shortName || company.id, agent.name, existingSlug);
+
+      const profileSlug = managedAgent && !retiredAgent
+        ? desiredProfileSlug(companyName, agent.name, existingSlug)
+        : existingSlug;
+
+      if (!retiredAgent) {
+        orgAgents.push(normalizeOrgAgent(agent, { profileSlug }));
+      }
+
+      if (!managedAgent) continue;
+      if (retiredAgent) continue;
+
       const homes = await ensureHomes({
         profileSlug,
         hermesDataRoot,
@@ -275,7 +350,7 @@ export async function reconcileAgents({
             agentStackProfileSlug: profileSlug,
           },
         },
-        companyName: company.name || company.shortName || company.id,
+        companyName,
         paperclipAgentServerUrl,
         hermesDataRoot,
         gbrainDataRoot,
@@ -287,7 +362,7 @@ export async function reconcileAgents({
       activeAgentIds.add(agent.id);
       nextEntries.push({
         companyId: company.id,
-        companyName: company.name || company.shortName || company.id,
+        companyName,
         agentId: agent.id,
         agentName: agent.name,
         profileSlug,
@@ -297,6 +372,13 @@ export async function reconcileAgents({
         lastSeenAt: now,
       });
     }
+
+    orgCompanies.push(compactObject({
+      id: company.id,
+      name: companyName,
+      shortName: company.shortName,
+      agents: orgAgents,
+    }));
   }
 
   let retired = 0;
@@ -316,6 +398,12 @@ export async function reconcileAgents({
     retired += 1;
   }
 
+  await writeOrgMirror({
+    root: orgMirrorRoot,
+    generatedAt: now,
+    companies: orgCompanies,
+  });
+
   return {
     patched,
     provisioned,
@@ -326,6 +414,130 @@ export async function reconcileAgents({
       managedAgents: nextEntries,
     },
   };
+}
+
+export async function writeOrgMirrorFiles({
+  root = DEFAULT_ORG_MIRROR_ROOT,
+  generatedAt = new Date().toISOString(),
+  companies,
+}) {
+  await mkdir(root, { recursive: true });
+  const normalized = {
+    version: 1,
+    generatedAt,
+    source: 'paperclip',
+    companies,
+  };
+
+  await atomicWriteFile(join(root, 'org-chart.json'), `${JSON.stringify(normalized, null, 2)}\n`);
+  await atomicWriteFile(join(root, 'org-chart.md'), renderOrgChartMarkdown(normalized));
+}
+
+async function atomicWriteFile(destination, content) {
+  await mkdir(dirname(destination), { recursive: true });
+  const tmpPath = `${destination}.tmp`;
+  await writeFile(tmpPath, content);
+  await rename(tmpPath, destination);
+}
+
+function normalizeOrgAgent(agent, { profileSlug } = {}) {
+  const metadata = agent.metadata && typeof agent.metadata === 'object' ? agent.metadata : {};
+  return compactObject({
+    id: agent.id,
+    name: agent.name,
+    role: agent.role,
+    title: agent.title,
+    adapterType: agent.adapterType,
+    profileSlug,
+    team: firstNonEmpty(agent.team, agent.department, metadata.team, metadata.department),
+    reportsTo: firstNonEmpty(
+      agent.reportsTo,
+      agent.reportsToAgentId,
+      agent.managerAgentId,
+      agent.managerId,
+      metadata.reportsTo,
+      metadata.reportsToAgentId,
+      metadata.managerAgentId,
+      metadata.managerId,
+    ),
+    owns: normalizeStringList(firstNonEmpty(agent.owns, agent.ownerOf, metadata.owns, metadata.ownerOf)),
+    routingKeywords: normalizeStringList(firstNonEmpty(
+      agent.routingKeywords,
+      agent.keywords,
+      metadata.routingKeywords,
+      metadata.keywords,
+    )),
+    capabilities: agent.capabilities,
+  });
+}
+
+function renderOrgChartMarkdown(orgChart) {
+  const lines = [
+    '# Paperclip Org Chart',
+    '',
+    `Generated: ${orgChart.generatedAt}`,
+    '',
+    'Paperclip is the source of truth for these companies and roles. Use this file with the Delegation Protocol when routing or handing off work.',
+    '',
+  ];
+
+  for (const company of orgChart.companies) {
+    lines.push(`## ${company.name}${company.id ? ` (${company.id})` : ''}`, '');
+
+    if (!company.agents?.length) {
+      lines.push('- No active agents found.', '');
+      continue;
+    }
+
+    for (const agent of company.agents) {
+      const label = [agent.name, agent.title].filter(Boolean).join(' - ');
+      lines.push(`- ${label}`);
+      appendMarkdownDetail(lines, 'id', agent.id);
+      appendMarkdownDetail(lines, 'role', agent.role);
+      appendMarkdownDetail(lines, 'adapter', agent.adapterType);
+      appendMarkdownDetail(lines, 'profile', agent.profileSlug);
+      appendMarkdownDetail(lines, 'team', agent.team);
+      appendMarkdownDetail(lines, 'reports to', agent.reportsTo);
+      appendMarkdownDetail(lines, 'owns', agent.owns?.join(', '));
+      appendMarkdownDetail(lines, 'routing keywords', agent.routingKeywords?.join(', '));
+      appendMarkdownDetail(lines, 'capabilities', agent.capabilities);
+    }
+
+    lines.push('');
+  }
+
+  return `${lines.join('\n').replace(/\n{3,}/g, '\n\n')}\n`;
+}
+
+function appendMarkdownDetail(lines, label, value) {
+  if (!value) return;
+  lines.push(`  - ${label}: ${String(value).replace(/\s+/g, ' ').trim()}`);
+}
+
+function firstNonEmpty(...values) {
+  return values.find((value) => {
+    if (Array.isArray(value)) return value.length > 0;
+    return value !== undefined && value !== null && String(value).trim() !== '';
+  });
+}
+
+function normalizeStringList(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value.split(',').map((item) => item.trim()).filter(Boolean);
+  }
+  return undefined;
+}
+
+function compactObject(object) {
+  return Object.fromEntries(
+    Object.entries(object).filter(([, value]) => {
+      if (Array.isArray(value)) return value.length > 0;
+      return value !== undefined && value !== null && value !== '';
+    }),
+  );
 }
 
 export async function readManifest(manifestPath = DEFAULT_MANIFEST_PATH) {
@@ -696,6 +908,7 @@ async function runOnceFromEnv() {
     hermesDataRoot: envValue('HERMES_DATA_ROOT', '/data/hermes'),
     gbrainDataRoot: envValue('GBRAIN_DATA_ROOT', '/data/gbrain'),
     templateDir: envValue('PROFILE_SYNC_TEMPLATE_DIR', DEFAULT_TEMPLATE_DIR),
+    orgMirrorRoot: envValue('ORG_MIRROR_ROOT', DEFAULT_ORG_MIRROR_ROOT),
     initGbrain: !envBool('PROFILE_SYNC_SKIP_GBRAIN_INIT', false),
   });
 

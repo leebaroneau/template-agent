@@ -31,6 +31,7 @@ services:
       PROFILE_SYNC_DELETE_MODE: ${PROFILE_SYNC_DELETE_MODE:-archive}
       PROFILE_SYNC_MANIFEST_PATH: /data/agent-stack/profile-sync/manifest.json
       PROFILE_SYNC_TEMPLATE_DIR: /opt/hermes-runtime/templates
+      ORG_MIRROR_ROOT: ${ORG_MIRROR_ROOT:-/data/agent-stack}
       PROFILE_SYNC_API_BASE: ${PROFILE_SYNC_API_BASE:-http://127.0.0.1:3100}
       PAPERCLIP_AGENT_API_URL: ${PAPERCLIP_AGENT_API_URL:-http://127.0.0.1:3100}
       PAPERCLIP_PROFILE_SYNC_API_KEY: ${PAPERCLIP_PROFILE_SYNC_API_KEY:-}

@@ -64,6 +64,12 @@ test('seeds the Hermes agent with model and provider from Hermes config', async 
     assert.equal(capturedPayload.adapterConfig.provider, 'openai-codex');
     assert.equal(capturedPayload.adapterConfig.paperclipApiUrl, 'http://127.0.0.1:3100/api');
     assert.equal(capturedPayload.adapterConfig.env.PAPERCLIP_API_URL, 'http://127.0.0.1:3100');
+    assert.match(capturedPayload.capabilities, /Delegation Protocol/);
+    assert.match(capturedPayload.capabilities, /\/data\/agent-stack\/delegation-protocol\.md/);
+    assert.match(capturedPayload.capabilities, /Org Chart/);
+    assert.match(capturedPayload.capabilities, /\/data\/agent-stack\/org-chart\.md/);
+    assert.match(capturedPayload.capabilities, /Learning Protocol/);
+    assert.match(capturedPayload.capabilities, /\/data\/agent-stack\/learning-protocol\.md/);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

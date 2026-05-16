@@ -13,6 +13,26 @@ const paperclipAgentServerUrl = withoutApiSuffix(
   envValue('PAPERCLIP_AGENT_API_URL') || envValue('PAPERCLIP_API_URL') || 'http://127.0.0.1:3100',
 );
 const paperclipAgentApiUrl = withApiSuffix(paperclipAgentServerUrl);
+const DELEGATION_PROTOCOL_PATH = '/data/agent-stack/delegation-protocol.md';
+const DELEGATION_PROTOCOL_FILE = 'DELEGATION_PROTOCOL.md';
+const DELEGATION_PROTOCOL_POINTER = [
+  `Delegation Protocol: Before doing or reassigning work, read ${DELEGATION_PROTOCOL_PATH}.`,
+  `If that shared file is unavailable, read ${DELEGATION_PROTOCOL_FILE} in your HERMES_HOME.`,
+  'Apply it before accepting, rerouting, creating, commenting on, or completing issues.',
+].join(' ');
+const ORG_CHART_MARKDOWN_PATH = '/data/agent-stack/org-chart.md';
+const ORG_CHART_JSON_PATH = '/data/agent-stack/org-chart.json';
+const ORG_CHART_POINTER = [
+  `Org Chart: Before delegating across roles, read ${ORG_CHART_MARKDOWN_PATH}.`,
+  `For structured routing details, use ${ORG_CHART_JSON_PATH}.`,
+].join(' ');
+const LEARNING_PROTOCOL_PATH = '/data/agent-stack/learning-protocol.md';
+const LEARNING_PROTOCOL_FILE = 'LEARNING_PROTOCOL.md';
+const LEARNING_PROTOCOL_POINTER = [
+  `Learning Protocol: At task start and finish, read ${LEARNING_PROTOCOL_PATH}.`,
+  `If that shared file is unavailable, read ${LEARNING_PROTOCOL_FILE} in your HERMES_HOME.`,
+  'Use your role-specific GBRAIN_HOME for durable learned summaries; do not crawl all of /data.',
+].join(' ');
 
 const roles = [
   {
@@ -165,7 +185,7 @@ function createPayload(role) {
     name: role.name,
     role: role.role,
     title: role.title,
-    capabilities: role.capabilities,
+    capabilities: withSharedOperatingPointers(role.capabilities),
     adapterType: 'hermes_local',
     adapterConfig: adapterConfig(role.profile),
     runtimeConfig: {
@@ -180,6 +200,28 @@ function createPayload(role) {
       managedBy: 'agent-stack seed-agents.mjs',
     },
   };
+}
+
+function withSharedOperatingPointers(capabilities) {
+  let next = typeof capabilities === 'string' ? capabilities.trim() : '';
+
+  if (!next.includes(DELEGATION_PROTOCOL_PATH) && !/Delegation Protocol:/i.test(next)) {
+    next = appendCapabilityPointer(next, DELEGATION_PROTOCOL_POINTER);
+  }
+
+  if (!next.includes(ORG_CHART_MARKDOWN_PATH) && !/Org Chart:/i.test(next)) {
+    next = appendCapabilityPointer(next, ORG_CHART_POINTER);
+  }
+
+  if (!next.includes(LEARNING_PROTOCOL_PATH) && !/Learning Protocol:/i.test(next)) {
+    next = appendCapabilityPointer(next, LEARNING_PROTOCOL_POINTER);
+  }
+
+  return next;
+}
+
+function appendCapabilityPointer(capabilities, pointer) {
+  return capabilities ? `${capabilities}\n\n${pointer}` : pointer;
 }
 
 const existing = await api('GET', `/api/companies/${companyId}/agents`);

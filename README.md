@@ -50,6 +50,13 @@ PROFILE_SYNC_DELETE_MODE=archive
 PAPERCLIP_PROFILE_SYNC_API_KEY=<paperclip-api-key>
 ```
 
+For single-VM deployments, the same values can live in this root-readable file
+instead of Coolify env:
+
+```text
+/data/agent-stack/profile-sync/profile-sync.env
+```
+
 Leave these blank unless you want to sync only specific companies:
 
 ```env
@@ -74,6 +81,16 @@ If `PROFILE_SYNC_ENABLED` is not `1`, roles will not be automatically patched. W
 /data/gbrain/<company-role>
 ```
 
+Profile sync also mirrors the current Paperclip companies and agents into:
+
+```text
+/data/agent-stack/org-chart.md
+/data/agent-stack/org-chart.json
+```
+
+Use `ORG_MIRROR_ROOT` only if you need to place those files somewhere other than
+`/data/agent-stack`.
+
 ## Blank Image Audit
 
 After a local build, audit the image before publishing or reusing it:
@@ -92,6 +109,73 @@ The Dockerfile deliberately cleans `/data` during build. Runtime data appears on
 The default Hermes config is intentionally empty. The template only bootstraps neutral profile files, installs GBrain skills into Hermes profiles, and creates a separate GBrain home for each synced role.
 
 Profile sync is available in the `paperclip` container. Enable it with `PROFILE_SYNC_ENABLED=1` and a `PAPERCLIP_PROFILE_SYNC_API_KEY` when you want Paperclip roles to be patched to their own Hermes profile and GBrain home.
+
+## Important Information Index
+
+Use this shared runtime file as the human-maintained index for important client information:
+
+```text
+/data/agent-stack/important-information-index.md
+```
+
+The `paperclip` service seeds the file if it does not already exist. It will not
+overwrite an existing index.
+
+Keep high-value pointers here: key Paperclip projects, source paths under `/data/instances`, role-specific GBrain pages, credentials locations, decisions, client conventions, and anything agents should check before starting broad work. The index should point to durable sources rather than duplicating large content.
+
+## Learning Protocol
+
+The stack includes a task-scoped learning protocol. It is not a background crawler
+and it does not wire GBrain MCP into the blank Hermes config. Agents use the
+existing `gbrain` CLI with their role-specific `GBRAIN_HOME`.
+
+At container startup, the `paperclip` service installs the shared protocol into:
+
+```text
+/data/agent-stack/learning-protocol.md
+```
+
+It also mirrors the same protocol into the default Hermes profile at:
+
+```text
+/data/hermes/LEARNING_PROTOCOL.md
+```
+
+Synced role profile homes receive:
+
+```text
+/data/hermes/profiles/<company-role>/LEARNING_PROTOCOL.md
+```
+
+The learning loop is:
+
+1. At task start, search/query the role's own GBrain.
+2. Inspect only relevant Paperclip files under `/data/instances`.
+3. Use `/data/agent-stack/important-information-index.md` for high-value pointers.
+4. At task end, write concise durable learning into the role's own GBrain.
+5. Leave the GBrain page slug in the Paperclip issue or final answer.
+
+## Delegation Protocol
+
+The stack includes a shared Paperclip/Hermes delegation protocol for multi-role teams.
+At container startup, the `paperclip` service installs the protocol into the shared VM
+volume at:
+
+```text
+/data/agent-stack/delegation-protocol.md
+```
+
+It also mirrors the same contract into the default Hermes profile at:
+
+```text
+/data/hermes/DELEGATION_PROTOCOL.md
+```
+
+When `seed-agents.mjs` creates the default Hermes agent, and when `profile-sync.mjs`
+patches Paperclip `hermes_local` agents, each agent's `capabilities` field receives
+a short pointer telling it to read the shared protocol and Paperclip org chart
+before accepting, rerouting, creating, commenting on, or completing issues. New
+Hermes profile homes also receive `DELEGATION_PROTOCOL.md` as a fallback copy.
 
 To reset a local test install:
 

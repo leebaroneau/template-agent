@@ -53,6 +53,26 @@ fi
 
 check_absent "hermes-runtime/templates/config.yaml" 'mcp_servers:|terminal:|dashboard:|skills:' "blank Hermes config should not ship default settings"
 
+if ! grep -nE 'COPY paperclip/learning-protocol\.md /opt/paperclip/learning-protocol\.md' paperclip/Dockerfile >/dev/null 2>&1; then
+  echo "Dockerfile should copy the learning protocol into the image." >&2
+  failed=1
+fi
+
+if ! grep -nE 'COPY paperclip/important-information-index\.md /opt/paperclip/important-information-index\.md' paperclip/Dockerfile >/dev/null 2>&1; then
+  echo "Dockerfile should copy the important information index seed into the image." >&2
+  failed=1
+fi
+
+if ! grep -nE '/data/agent-stack/learning-protocol\.md' paperclip/entrypoint.sh >/dev/null 2>&1; then
+  echo "Paperclip entrypoint should mirror the learning protocol into /data." >&2
+  failed=1
+fi
+
+if ! grep -nE '/data/agent-stack/important-information-index\.md' paperclip/entrypoint.sh >/dev/null 2>&1; then
+  echo "Paperclip entrypoint should seed the important information index into /data." >&2
+  failed=1
+fi
+
 if [[ "$failed" -ne 0 ]]; then
   exit 1
 fi

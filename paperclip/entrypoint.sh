@@ -17,11 +17,41 @@ export GBRAIN_HOME="${GBRAIN_HOME:-$GBRAIN_DATA_ROOT/default}"
 export PAPERCLIP_API_URL="${PAPERCLIP_API_URL:-http://127.0.0.1:3100}"
 export PROFILE_SYNC_MANIFEST_PATH="${PROFILE_SYNC_MANIFEST_PATH:-/data/agent-stack/profile-sync/manifest.json}"
 export PROFILE_SYNC_TEMPLATE_DIR="${PROFILE_SYNC_TEMPLATE_DIR:-/opt/hermes-runtime/templates}"
+export PROFILE_SYNC_ENV_FILE="${PROFILE_SYNC_ENV_FILE:-/data/agent-stack/profile-sync/profile-sync.env}"
+
+if [[ -f "$PROFILE_SYNC_ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$PROFILE_SYNC_ENV_FILE"
+  set +a
+fi
+
+export ORG_MIRROR_ROOT="${ORG_MIRROR_ROOT:-/data/agent-stack}"
 
 mkdir -p "$HERMES_DATA_ROOT" "$GBRAIN_DATA_ROOT" /home/node/.hermes /opt/work /data/.locks
 if [[ ! -e /hermes || -L /hermes ]]; then
   ln -sfn /data /hermes
 fi
+
+if [[ -f /opt/paperclip/delegation-protocol.md ]]; then
+  mkdir -p /data/agent-stack "$HERMES_DATA_ROOT"
+  cp /opt/paperclip/delegation-protocol.md /data/agent-stack/delegation-protocol.md
+  cp /opt/paperclip/delegation-protocol.md "$HERMES_DATA_ROOT/DELEGATION_PROTOCOL.md"
+fi
+
+if [[ -f /opt/paperclip/learning-protocol.md ]]; then
+  mkdir -p /data/agent-stack "$HERMES_DATA_ROOT"
+  cp /opt/paperclip/learning-protocol.md /data/agent-stack/learning-protocol.md
+  cp /opt/paperclip/learning-protocol.md "$HERMES_DATA_ROOT/LEARNING_PROTOCOL.md"
+fi
+
+if [[ -f /opt/paperclip/important-information-index.md ]]; then
+  mkdir -p /data/agent-stack
+  if [[ ! -f /data/agent-stack/important-information-index.md ]]; then
+    cp /opt/paperclip/important-information-index.md /data/agent-stack/important-information-index.md
+  fi
+fi
+
 chown -R node:node /data /home/node/.hermes /opt/work
 
 runuser -u node -- flock /data/.locks/bootstrap-profiles.lock /opt/hermes-runtime/scripts/bootstrap-profiles.sh
@@ -57,6 +87,7 @@ if [[ "${PROFILE_SYNC_ENABLED:-0}" =~ ^(1|true|TRUE|yes|YES|on|ON)$ ]]; then
     PAPERCLIP_API_KEY="${PAPERCLIP_API_KEY:-}" \
     PAPERCLIP_COMPANY_IDS="${PAPERCLIP_COMPANY_IDS:-}" \
     PAPERCLIP_COMPANIES="${PAPERCLIP_COMPANIES:-}" \
+    ORG_MIRROR_ROOT="$ORG_MIRROR_ROOT" \
     HERMES_DATA_ROOT="$HERMES_DATA_ROOT" \
     GBRAIN_DATA_ROOT="$GBRAIN_DATA_ROOT" \
     node /opt/paperclip/profile-sync.mjs loop &

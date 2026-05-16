@@ -80,6 +80,14 @@ for raw_profile in "${profiles[@]}"; do
     fi
   fi
 
+  if [[ ! -f "$profile_home/DELEGATION_PROTOCOL.md" && -f "$TEMPLATE_DIR/DELEGATION_PROTOCOL.md" ]]; then
+    cp "$TEMPLATE_DIR/DELEGATION_PROTOCOL.md" "$profile_home/DELEGATION_PROTOCOL.md"
+  fi
+
+  if [[ ! -f "$profile_home/LEARNING_PROTOCOL.md" && -f "$TEMPLATE_DIR/LEARNING_PROTOCOL.md" ]]; then
+    cp "$TEMPLATE_DIR/LEARNING_PROTOCOL.md" "$profile_home/LEARNING_PROTOCOL.md"
+  fi
+
   write_env_file "$profile_home/.env"
   install_gbrain_skills "$profile_home"
 
