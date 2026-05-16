@@ -104,24 +104,36 @@ After the stack is deployed (locally or via Coolify) and the containers are runn
 
 ## Coolify Setup
 
-1. Create a new Docker Compose app in Coolify from this GitHub repo.
-2. Pick the public domains:
+1. **Create a new Docker Compose app** in Coolify pointing at this GitHub repo (`leebaroneau/paperclip-hermes-gbrain`, branch `main`, base directory `/`).
+2. **Wire up a GitHub source that can read this repo** (skip if the repo is public). Coolify's "Public GitHub" source can only clone public repos. For a private template, attach the app to a GitHub App installation that includes this repo:
+   - In Coolify: app → *Source* → pick (or create) a GitHub App installation, and ensure the installation is granted access to this repo on GitHub.
+   - Symptom of missing this step: deploy fails in ~0 seconds with `GitHub API call failed: Not Found` in the logs.
+3. **Pick the public domains** you'll use:
    - `paperclip.<client-domain>`
    - `hermes.<client-domain>`
-3. Generate starter env values:
+4. **Generate starter env values**:
 
    ```bash
    ./scripts/coolify-env.sh client.example.com
    ```
 
-4. Paste the generated values into Coolify, replacing the example domain with the real client domain.
-5. (Optional) Render brand-specific compose routes:
+5. **Paste the generated values into Coolify**, replacing the example domain with the real client domain.
+6. **Set per-service FQDNs** so Coolify auto-injects routing labels for BOTH services (the compose's own `${HERMES_HOSTNAME}` placeholders won't work — see "Coolify routing notes" below):
+
+   ```env
+   SERVICE_FQDN_PAPERCLIP=paperclip.<client-domain>
+   SERVICE_FQDN_HERMES=hermes.<client-domain>
+   ```
+
+   Setting the app's primary FQDN in the Coolify UI usually auto-creates `SERVICE_FQDN_PAPERCLIP`. `SERVICE_FQDN_HERMES` is the one easy to forget — without it the secondary service has no public route.
+
+7. **(Optional) Render brand-specific compose routes** if you'd rather hardcode the Traefik labels in a brand fork:
 
    ```bash
    ./scripts/render-coolify-compose.sh client.example.com client-agent-stack
    ```
 
-6. Deploy. Then follow the First-Run Flow above to mint the API key and activate the MCP server.
+8. **Deploy.** Then follow the First-Run Flow above to mint the API key and activate the MCP server.
 
 ### Coolify env variable checklist
 
@@ -132,7 +144,11 @@ PAPERCLIP_PUBLIC_URL=https://paperclip.<client-domain>
 PAPERCLIP_ALLOWED_HOSTNAMES=paperclip.<client-domain>,localhost,127.0.0.1
 PAPERCLIP_HOSTNAME=paperclip.<client-domain>
 HERMES_HOSTNAME=hermes.<client-domain>
+SERVICE_FQDN_PAPERCLIP=paperclip.<client-domain>
+SERVICE_FQDN_HERMES=hermes.<client-domain>
 ```
+
+The `SERVICE_FQDN_*` pair is what Coolify actually uses to inject routing labels at deploy time (see "Coolify routing notes"). The `PAPERCLIP_HOSTNAME` / `HERMES_HOSTNAME` pair is what the compose's own Traefik labels reference — those won't substitute under Coolify but cost nothing to keep set for parity with non-Coolify Compose use.
 
 **Required to activate the Paperclip MCP server** (set after First-Run step 3 mints a key):
 
