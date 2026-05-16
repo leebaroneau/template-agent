@@ -44,14 +44,6 @@ services:
       - "${PAPERCLIP_PORT:-3100}:3100"
     volumes:
       - paperclip-data:/data
-    labels:
-      - traefik.enable=true
-      - traefik.http.middlewares.gzip.compress=true
-      - traefik.http.routers.http-paperclip-hermes-gbrain-paperclip.entryPoints=http
-      - traefik.http.routers.http-paperclip-hermes-gbrain-paperclip.middlewares=gzip
-      - traefik.http.routers.http-paperclip-hermes-gbrain-paperclip.rule=Host(`${PAPERCLIP_HOSTNAME:-paperclip.example.com}`) && PathPrefix(`/`)
-      - traefik.http.routers.http-paperclip-hermes-gbrain-paperclip.service=http-paperclip-hermes-gbrain-paperclip
-      - traefik.http.services.http-paperclip-hermes-gbrain-paperclip.loadbalancer.server.port=3100
     restart: unless-stopped
 
   hermes:
@@ -77,14 +69,6 @@ services:
       - paperclip-data:/data
     depends_on:
       - paperclip
-    labels:
-      - traefik.enable=true
-      - traefik.http.middlewares.gzip.compress=true
-      - traefik.http.routers.http-paperclip-hermes-gbrain-hermes.entryPoints=http
-      - traefik.http.routers.http-paperclip-hermes-gbrain-hermes.middlewares=gzip
-      - traefik.http.routers.http-paperclip-hermes-gbrain-hermes.rule=Host(`${HERMES_HOSTNAME:-hermes.example.com}`) && PathPrefix(`/`)
-      - traefik.http.routers.http-paperclip-hermes-gbrain-hermes.service=http-paperclip-hermes-gbrain-hermes
-      - traefik.http.services.http-paperclip-hermes-gbrain-hermes.loadbalancer.server.port=9119
     restart: unless-stopped
 
 volumes:
