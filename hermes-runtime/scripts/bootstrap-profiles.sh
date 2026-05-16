@@ -48,6 +48,30 @@ install_gbrain_skills() {
   done
 }
 
+# Symlink agent-stack-shipped skills (e.g. using-paperclip) into every
+# Hermes profile's skills/agent-stack/ directory. Mirrors install_gbrain_skills
+# pattern. Source dir is baked into the image at /opt/hermes-runtime/skills/.
+install_agent_stack_skills() {
+  local profile_home="$1"
+  local source="${AGENT_STACK_SKILLS_SOURCE:-/opt/hermes-runtime/skills}"
+  local dest="$profile_home/skills/agent-stack"
+
+  if [[ ! -d "$source" ]]; then
+    return 0
+  fi
+
+  mkdir -p "$dest"
+  for skill_dir in "$source"/*; do
+    [[ -d "$skill_dir" && -f "$skill_dir/SKILL.md" ]] || continue
+    local name
+    name="$(basename "$skill_dir")"
+    if [[ -e "$dest/$name" && ! -L "$dest/$name" ]]; then
+      continue
+    fi
+    ln -sfn "$skill_dir" "$dest/$name"
+  done
+}
+
 # Idempotently add any mcp_servers entries that exist in the template config
 # but are missing from this profile's config. Existing entries are NEVER
 # overwritten, so user customisations (different command path, disabled flag,
@@ -142,6 +166,7 @@ for raw_profile in "${profiles[@]}"; do
 
   write_env_file "$profile_home/.env"
   install_gbrain_skills "$profile_home"
+  install_agent_stack_skills "$profile_home"
 
   if [[ ! -f "$gbrain_home/.gbrain/config.json" ]]; then
     GBRAIN_HOME="$gbrain_home" gbrain init --pglite
@@ -151,11 +176,13 @@ done
 
 # Sweep any profile homes profile-sync may have created at runtime (per-role
 # Hermes profiles for Paperclip agents). Each gets the same MCP-server merge
-# pass so new template entries propagate without manual patching.
+# pass and the agent-stack skill symlinks so new template entries and new
+# bundled skills propagate without manual patching.
 if [[ -d "$HERMES_DATA_ROOT/profiles" ]]; then
   for runtime_profile_home in "$HERMES_DATA_ROOT"/profiles/*/; do
     [[ -d "$runtime_profile_home" ]] || continue
     [[ -f "$runtime_profile_home/config.yaml" ]] || continue
     sync_mcp_servers_from_template "$runtime_profile_home/config.yaml"
+    install_agent_stack_skills "$runtime_profile_home"
   done
 fi

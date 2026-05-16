@@ -212,6 +212,22 @@ A healthy server replies with `serverInfo: {"name":"paperclip","version":"0.1.0"
 
 When you (or an upstream update) add a new MCP server to `hermes-runtime/templates/config.yaml`, the `bootstrap-profiles.sh` entrypoint script idempotently merges any *missing* `mcp_servers.*` entries into every profile config on the next container start — both `HERMES_PROFILES`-listed profiles AND per-role profiles that `profile-sync.mjs` created at runtime under `/data/hermes/profiles/`. Existing entries are never overwritten, so per-profile customisations are preserved. New servers added to the template propagate to every Hermes profile automatically without a manual patch.
 
+### Bundled skill: `using-paperclip`
+
+The MCP server provides typed tools. The bundled `using-paperclip` Hermes skill provides *behaviour* — when and how agents should reach for those tools. It lives at `hermes-runtime/skills/using-paperclip/SKILL.md` and is symlinked into every Hermes profile's `skills/agent-stack/` directory by `bootstrap-profiles.sh` (same pattern as the upstream GBrain skills).
+
+The skill teaches agents to:
+
+- Check their assigned issues at task start via `paperclip_list_issues`
+- Post status comments at meaningful milestones via `paperclip_comment_on_issue`
+- File subtasks as child issues rather than burying them in a comment
+- Use `@AgentName` mentions in comments to wake the right peer on blockers
+- Mark issues `done` with a summary + GBrain page slug at finish
+
+Without this skill, the MCP tools still work — but agents only call them when a user explicitly asks. With the skill, agents treat Paperclip issue tracking as a first-class part of their loop.
+
+To add your own agent-stack-wide skills, drop a `SKILL.md` (with optional `references/`, `scripts/`, `assets/`) under `hermes-runtime/skills/<your-skill-name>/` and rebuild. The bootstrap sweep picks them up across every profile.
+
 ## Runtime Patches
 
 The `paperclip` container's entrypoint runs three small Node patches against Paperclip's bundled npm package before starting the server. These rewrite a few lines in place each boot so the agent stack behaves correctly:

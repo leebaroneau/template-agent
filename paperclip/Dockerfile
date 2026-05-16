@@ -60,6 +60,7 @@ RUN npm install -g "paperclipai@${PAPERCLIP_VERSION}"
 
 COPY hermes-runtime/scripts /opt/hermes-runtime/scripts
 COPY hermes-runtime/templates /opt/hermes-runtime/templates
+COPY hermes-runtime/skills /opt/hermes-runtime/skills
 COPY paperclip/delegation-protocol.md /opt/paperclip/delegation-protocol.md
 COPY paperclip/learning-protocol.md /opt/paperclip/learning-protocol.md
 COPY paperclip/important-information-index.md /opt/paperclip/important-information-index.md
