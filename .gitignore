@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+!.env.coolify.example
+data/
+instances/
+gbrain/
+hermes/
+backups/
+*.tar
+*.tar.gz

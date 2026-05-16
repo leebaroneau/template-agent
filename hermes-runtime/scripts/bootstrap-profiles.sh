@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HERMES_DATA_ROOT="${HERMES_DATA_ROOT:-/opt/data/hermes}"
+GBRAIN_DATA_ROOT="${GBRAIN_DATA_ROOT:-/opt/data/gbrain}"
+HERMES_PROFILES="${HERMES_PROFILES:-default}"
+TEMPLATE_DIR="/opt/hermes-runtime/templates"
+
+mkdir -p "$HERMES_DATA_ROOT/profiles" "$GBRAIN_DATA_ROOT"
+
+write_env_file() {
+  local env_file="$1"
+
+  if [[ -f "$env_file" ]]; then
+    return 0
+  fi
+
+  if [[ -z "${OPENAI_API_KEY:-}" && -z "${ANTHROPIC_API_KEY:-}" && -z "${OPENROUTER_API_KEY:-}" ]]; then
+    return 0
+  fi
+
+  umask 077
+  {
+    [[ -n "${OPENAI_API_KEY:-}" ]] && printf 'OPENAI_API_KEY=%s\n' "$OPENAI_API_KEY"
+    [[ -n "${ANTHROPIC_API_KEY:-}" ]] && printf 'ANTHROPIC_API_KEY=%s\n' "$ANTHROPIC_API_KEY"
+    [[ -n "${OPENROUTER_API_KEY:-}" ]] && printf 'OPENROUTER_API_KEY=%s\n' "$OPENROUTER_API_KEY"
+  } > "$env_file"
+}
+
+install_gbrain_skills() {
+  local profile_home="$1"
+  local gbrain_source="${GBRAIN_SKILLS_SOURCE:-/opt/gbrain/skills}"
+  local gbrain_dest="$profile_home/skills/gbrain"
+
+  if [[ ! -d "$gbrain_source" ]]; then
+    return 0
+  fi
+
+  mkdir -p "$gbrain_dest"
+  for skill_dir in "$gbrain_source"/*; do
+    [[ -d "$skill_dir" && -f "$skill_dir/SKILL.md" ]] || continue
+    local name
+    name="$(basename "$skill_dir")"
+    if [[ -e "$gbrain_dest/$name" && ! -L "$gbrain_dest/$name" ]]; then
+      continue
+    fi
+    ln -sfn "$skill_dir" "$gbrain_dest/$name"
+  done
+}
+
+IFS=',' read -ra profiles <<< "$HERMES_PROFILES"
+for raw_profile in "${profiles[@]}"; do
+  profile="$(echo "$raw_profile" | tr '[:upper:]' '[:lower:]' | xargs)"
+  if [[ -z "$profile" ]]; then
+    continue
+  fi
+  if [[ ! "$profile" =~ ^[a-z0-9_-]+$ ]]; then
+    echo "Invalid profile: $profile" >&2
+    exit 1
+  fi
+
+  if [[ "$profile" == "default" ]]; then
+    profile_home="$HERMES_DATA_ROOT"
+  else
+    profile_home="$HERMES_DATA_ROOT/profiles/$profile"
+  fi
+  gbrain_home="$GBRAIN_DATA_ROOT/$profile"
+
+  mkdir -p "$profile_home" "$gbrain_home"
+
+  if [[ ! -f "$profile_home/config.yaml" ]]; then
+    cp "$TEMPLATE_DIR/config.yaml" "$profile_home/config.yaml"
+  fi
+
+  if [[ ! -f "$profile_home/SOUL.md" ]]; then
+    if [[ -f "$TEMPLATE_DIR/SOUL.$profile.md" ]]; then
+      cp "$TEMPLATE_DIR/SOUL.$profile.md" "$profile_home/SOUL.md"
+    else
+      cp "$TEMPLATE_DIR/SOUL.default.md" "$profile_home/SOUL.md"
+    fi
+  fi
+
+  write_env_file "$profile_home/.env"
+  install_gbrain_skills "$profile_home"
+
+  if [[ ! -f "$gbrain_home/.gbrain/config.json" ]]; then
+    GBRAIN_HOME="$gbrain_home" gbrain init --pglite
+    GBRAIN_HOME="$gbrain_home" gbrain config set search.mode conservative >/dev/null 2>&1 || true
+  fi
+done

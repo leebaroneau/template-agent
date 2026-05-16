@@ -1,0 +1,16 @@
+.git
+.env
+.env.*
+!.env.example
+!.env.coolify.example
+data/
+instances/
+gbrain/
+hermes/
+paperclip-data/
+backups/
+node_modules/
+npm-debug.log*
+.DS_Store
+*.tar
+*.tar.gz

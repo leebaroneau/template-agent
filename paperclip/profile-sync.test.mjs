@@ -1,0 +1,482 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  buildManagedAgentPayload,
+  desiredProfileSlug,
+  ensureProfileHomes,
+  reconcileAgents,
+} from './profile-sync.mjs';
+
+test('desiredProfileSlug combines sanitized company and profile names', () => {
+  assert.equal(desiredProfileSlug('Acme, Inc.', 'SEO Researcher'), 'acme-inc-seo-researcher');
+});
+
+test('desiredProfileSlug keeps an existing managed profile stable', () => {
+  assert.equal(
+    desiredProfileSlug('Renamed Company', 'SEO Researcher', 'acme-inc-seo-researcher'),
+    'acme-inc-seo-researcher',
+  );
+});
+
+test('buildManagedAgentPayload isolates Hermes and GBrain for one profile', () => {
+  const payload = buildManagedAgentPayload({
+    agent: {
+      name: 'Researcher',
+      role: 'assistant',
+      title: 'Research Agent',
+      adapterConfig: {
+        timeoutSec: 30,
+        env: {
+          KEEP_ME: '1',
+        },
+      },
+      metadata: {
+        existing: true,
+      },
+    },
+    companyName: 'Acme',
+    paperclipAgentServerUrl: 'http://paperclip:3100/api',
+  });
+
+  assert.equal(payload.adapterType, 'hermes_local');
+  assert.equal(payload.adapterConfig.env.HERMES_HOME, '/data/hermes/profiles/acme-researcher');
+  assert.equal(payload.adapterConfig.env.GBRAIN_HOME, '/data/gbrain/acme-researcher');
+  assert.equal(payload.adapterConfig.env.PAPERCLIP_API_URL, 'http://paperclip:3100');
+  assert.equal(payload.adapterConfig.env.KEEP_ME, '1');
+  assert.equal(payload.adapterConfig.paperclipApiUrl, 'http://paperclip:3100/api');
+  assert.equal(payload.metadata.existing, true);
+  assert.equal(payload.metadata.agentStackProfileSlug, 'acme-researcher');
+  assert.equal(payload.metadata.managedBy, 'agent-stack profile-sync.mjs');
+});
+
+test('buildManagedAgentPayload removes unsupported mcp toolset from existing configs', () => {
+  const payload = buildManagedAgentPayload({
+    agent: {
+      name: 'Engineer',
+      adapterConfig: {
+        toolsets: 'terminal,file,web,mcp',
+      },
+      metadata: {},
+    },
+    companyName: 'Acme',
+  });
+
+  assert.equal(payload.adapterConfig.toolsets, 'terminal,file,web');
+});
+
+test('buildManagedAgentPayload inherits Hermes model settings from the profile config', () => {
+  const payload = buildManagedAgentPayload({
+    agent: {
+      name: 'CEO',
+      adapterConfig: {},
+      metadata: {},
+    },
+    companyName: 'Acme',
+    hermesModelConfig: {
+      model: 'gpt-5.5',
+      provider: 'openai-codex',
+    },
+  });
+
+  assert.equal(payload.adapterConfig.model, 'gpt-5.5');
+  assert.equal(payload.adapterConfig.provider, 'openai-codex');
+});
+
+test('buildManagedAgentPayload keeps explicit agent model settings', () => {
+  const payload = buildManagedAgentPayload({
+    agent: {
+      name: 'CEO',
+      adapterConfig: {
+        model: 'claude-opus-4-1',
+        provider: 'anthropic',
+      },
+      metadata: {},
+    },
+    companyName: 'Acme',
+    hermesModelConfig: {
+      model: 'gpt-5.5',
+      provider: 'openai-codex',
+    },
+  });
+
+  assert.equal(payload.adapterConfig.model, 'claude-opus-4-1');
+  assert.equal(payload.adapterConfig.provider, 'anthropic');
+});
+
+test('ensureProfileHomes creates profile config, soul, and gbrain directory', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-'));
+  try {
+    const result = await ensureProfileHomes({
+      profileSlug: 'acme-researcher',
+      hermesDataRoot: join(root, 'hermes'),
+      gbrainDataRoot: join(root, 'gbrain'),
+      templateDir: join(process.cwd(), 'hermes-runtime/templates'),
+      initGbrain: false,
+    });
+
+    assert.equal(result.hermesHome, join(root, 'hermes/profiles/acme-researcher'));
+    assert.equal(result.gbrainHome, join(root, 'gbrain/acme-researcher'));
+    assert.match(await readFile(join(result.hermesHome, 'config.yaml'), 'utf8'), /gbrain:/);
+    assert.match(await readFile(join(result.hermesHome, 'SOUL.md'), 'utf8'), /Hermes/);
+    await stat(result.gbrainHome);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('ensureProfileHomes copies default Hermes env into new profiles', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-'));
+  try {
+    const hermesRoot = join(root, 'hermes');
+    await mkdir(hermesRoot, { recursive: true });
+    await writeFile(join(hermesRoot, '.env'), 'OPENAI_API_KEY=real-key\n');
+
+    const result = await ensureProfileHomes({
+      profileSlug: 'acme-researcher',
+      hermesDataRoot: hermesRoot,
+      gbrainDataRoot: join(root, 'gbrain'),
+      templateDir: join(process.cwd(), 'hermes-runtime/templates'),
+      initGbrain: false,
+    });
+
+    assert.equal(await readFile(join(result.hermesHome, '.env'), 'utf8'), 'OPENAI_API_KEY=real-key\n');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('ensureProfileHomes clones default Hermes profile files without nested runtime profiles', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-'));
+  try {
+    const hermesRoot = join(root, 'hermes');
+    await mkdir(join(hermesRoot, 'skills', 'gbrain'), { recursive: true });
+    await mkdir(join(hermesRoot, 'profiles', 'old-agent'), { recursive: true });
+    await writeFile(join(hermesRoot, 'SOUL.md'), '# Default Soul\n');
+    await writeFile(join(hermesRoot, 'config.yaml'), 'default-config: true\n');
+    await writeFile(join(hermesRoot, 'skills', 'gbrain', 'SKILL.md'), '# Default GBrain Skill\n');
+    await writeFile(join(hermesRoot, 'profiles', 'old-agent', 'SOUL.md'), '# Do Not Copy\n');
+
+    const result = await ensureProfileHomes({
+      profileSlug: 'acme-researcher',
+      hermesDataRoot: hermesRoot,
+      gbrainDataRoot: join(root, 'gbrain'),
+      templateDir: join(process.cwd(), 'hermes-runtime/templates'),
+      initGbrain: false,
+    });
+
+    assert.equal(await readFile(join(result.hermesHome, 'SOUL.md'), 'utf8'), '# Default Soul\n');
+    assert.equal(
+      await readFile(join(result.hermesHome, 'skills', 'gbrain', 'SKILL.md'), 'utf8'),
+      '# Default GBrain Skill\n',
+    );
+    await assert.rejects(
+      stat(join(result.hermesHome, 'profiles', 'old-agent', 'SOUL.md')),
+      { code: 'ENOENT' },
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('ensureProfileHomes does not clone default Hermes runtime databases or sessions', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-'));
+  try {
+    const hermesRoot = join(root, 'hermes');
+    await mkdir(join(hermesRoot, 'sessions'), { recursive: true });
+    await writeFile(join(hermesRoot, 'state.db'), 'default-state');
+    await writeFile(join(hermesRoot, 'state.db-wal'), 'default-state-wal');
+    await writeFile(join(hermesRoot, 'state.db-shm'), 'default-state-shm');
+    await writeFile(join(hermesRoot, 'kanban.db'), 'default-kanban');
+    await writeFile(join(hermesRoot, 'kanban.db-wal'), 'default-kanban-wal');
+    await writeFile(join(hermesRoot, 'auth.lock'), '');
+    await writeFile(join(hermesRoot, '.hermes_history'), 'old history');
+    await writeFile(join(hermesRoot, 'sessions', 'session_20260515_160718_1a4293.json'), '{}');
+
+    const result = await ensureProfileHomes({
+      profileSlug: 'acme-researcher',
+      hermesDataRoot: hermesRoot,
+      gbrainDataRoot: join(root, 'gbrain'),
+      templateDir: join(process.cwd(), 'hermes-runtime/templates'),
+      initGbrain: false,
+    });
+
+    for (const relativePath of [
+      'state.db',
+      'state.db-wal',
+      'state.db-shm',
+      'kanban.db',
+      'kanban.db-wal',
+      'auth.lock',
+      '.hermes_history',
+      'sessions/session_20260515_160718_1a4293.json',
+    ]) {
+      await assert.rejects(stat(join(result.hermesHome, relativePath)), { code: 'ENOENT' });
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('ensureProfileHomes copies safe default GBrain skill folders without database files', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-'));
+  try {
+    const defaultGbrain = join(root, 'gbrain', 'default');
+    await mkdir(join(defaultGbrain, 'skills', 'article-enrichment'), { recursive: true });
+    await mkdir(join(defaultGbrain, '.gbrain', 'skills', 'brain-pdf'), { recursive: true });
+    await mkdir(join(defaultGbrain, '.gbrain', 'brain.pglite'), { recursive: true });
+    await writeFile(join(defaultGbrain, 'skills', 'article-enrichment', 'SKILL.md'), '# Article Skill\n');
+    await writeFile(join(defaultGbrain, '.gbrain', 'skills', 'brain-pdf', 'SKILL.md'), '# PDF Skill\n');
+    await writeFile(join(defaultGbrain, '.gbrain', 'brain.pglite', 'PG_VERSION'), '16\n');
+    await writeFile(join(defaultGbrain, '.gbrain', 'config.json'), '{"database_path":"default"}\n');
+    await writeFile(join(defaultGbrain, 'company-memory.md'), '# Do Not Copy Knowledge\n');
+
+    const result = await ensureProfileHomes({
+      profileSlug: 'acme-researcher',
+      hermesDataRoot: join(root, 'hermes'),
+      gbrainDataRoot: join(root, 'gbrain'),
+      templateDir: join(process.cwd(), 'hermes-runtime/templates'),
+      initGbrain: false,
+    });
+
+    assert.equal(
+      await readFile(join(result.gbrainHome, 'skills', 'article-enrichment', 'SKILL.md'), 'utf8'),
+      '# Article Skill\n',
+    );
+    assert.equal(
+      await readFile(join(result.gbrainHome, '.gbrain', 'skills', 'brain-pdf', 'SKILL.md'), 'utf8'),
+      '# PDF Skill\n',
+    );
+    await assert.rejects(stat(join(result.gbrainHome, '.gbrain', 'brain.pglite', 'PG_VERSION')), {
+      code: 'ENOENT',
+    });
+    await assert.rejects(stat(join(result.gbrainHome, '.gbrain', 'config.json')), { code: 'ENOENT' });
+    await assert.rejects(stat(join(result.gbrainHome, 'company-memory.md')), { code: 'ENOENT' });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('reconcileAgents patches only hermes_local agents and records managed entries', async () => {
+  const apiCalls = [];
+  const homeCalls = [];
+  const result = await reconcileAgents({
+    companies: [{ id: 'co_1', name: 'Acme, Inc.' }],
+    listAgents: async () => [
+      { id: 'a_1', name: 'Researcher', adapterType: 'hermes_local', adapterConfig: {}, metadata: {} },
+      { id: 'a_2', name: 'Designer', adapterType: 'other', adapterConfig: {}, metadata: {} },
+    ],
+    patchAgent: async (agentId, payload) => {
+      apiCalls.push({ agentId, payload });
+      return { id: agentId, ...payload };
+    },
+    ensureHomes: async ({ profileSlug }) => {
+      homeCalls.push(profileSlug);
+      return {
+        profileSlug,
+        modelConfig: {
+          model: 'gpt-5.5',
+          provider: 'openai-codex',
+        },
+      };
+    },
+    manifest: { managedAgents: [] },
+    paperclipAgentServerUrl: 'http://paperclip:3100',
+  });
+
+  assert.deepEqual(homeCalls, ['acme-inc-researcher']);
+  assert.equal(apiCalls.length, 1);
+  assert.equal(apiCalls[0].agentId, 'a_1');
+  assert.equal(apiCalls[0].payload.adapterConfig.model, 'gpt-5.5');
+  assert.equal(apiCalls[0].payload.adapterConfig.provider, 'openai-codex');
+  assert.equal(apiCalls[0].payload.metadata.agentStackProfileSlug, 'acme-inc-researcher');
+  assert.equal(result.manifest.managedAgents.length, 1);
+  assert.equal(result.manifest.managedAgents[0].agentId, 'a_1');
+  assert.equal(result.manifest.managedAgents[0].profileSlug, 'acme-inc-researcher');
+});
+
+test('reconcileAgents archives missing managed agents after a successful company scan', async () => {
+  const archived = [];
+  const result = await reconcileAgents({
+    companies: [{ id: 'co_1', name: 'Acme' }],
+    listAgents: async () => [],
+    patchAgent: async () => {
+      throw new Error('patchAgent should not be called');
+    },
+    ensureHomes: async () => {
+      throw new Error('ensureHomes should not be called');
+    },
+    retireHomes: async (entry) => {
+      archived.push(entry.profileSlug);
+    },
+    manifest: {
+      managedAgents: [
+        {
+          companyId: 'co_1',
+          companyName: 'Acme',
+          agentId: 'a_1',
+          agentName: 'Researcher',
+          profileSlug: 'acme-researcher',
+        },
+      ],
+    },
+    deleteMode: 'archive',
+    paperclipAgentServerUrl: 'http://paperclip:3100',
+  });
+
+  assert.deepEqual(archived, ['acme-researcher']);
+  assert.equal(result.manifest.managedAgents.length, 0);
+});
+
+test('reconcileAgents archives managed agents returned as terminated', async () => {
+  const archived = [];
+  const result = await reconcileAgents({
+    companies: [{ id: 'co_1', name: 'Acme' }],
+    listAgents: async () => [
+      {
+        id: 'a_1',
+        name: 'Researcher',
+        adapterType: 'hermes_local',
+        terminatedAt: '2026-05-15T00:00:00.000Z',
+        adapterConfig: {},
+        metadata: { agentStackProfileSlug: 'acme-researcher' },
+      },
+    ],
+    patchAgent: async () => {
+      throw new Error('patchAgent should not be called');
+    },
+    ensureHomes: async () => {
+      throw new Error('ensureHomes should not be called');
+    },
+    retireHomes: async (entry) => {
+      archived.push(entry.profileSlug);
+    },
+    manifest: {
+      managedAgents: [
+        {
+          companyId: 'co_1',
+          companyName: 'Acme',
+          agentId: 'a_1',
+          agentName: 'Researcher',
+          profileSlug: 'acme-researcher',
+        },
+      ],
+    },
+    deleteMode: 'archive',
+    paperclipAgentServerUrl: 'http://paperclip:3100',
+  });
+
+  assert.deepEqual(archived, ['acme-researcher']);
+  assert.equal(result.manifest.managedAgents.length, 0);
+});
+
+test('profile-sync CLI one-shot provisions homes and patches Paperclip API', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-cli-'));
+  const patched = [];
+  const server = createServer(async (request, response) => {
+    try {
+      if (request.method === 'GET' && request.url === '/api/companies') {
+        return json(response, [{ id: 'co_1', name: 'Acme, Inc.' }]);
+      }
+
+      if (request.method === 'GET' && request.url === '/api/companies/co_1/agents') {
+        return json(response, [
+          { id: 'a_1', name: 'Researcher', adapterType: 'hermes_local', adapterConfig: {}, metadata: {} },
+        ]);
+      }
+
+      if (request.method === 'PATCH' && request.url === '/api/agents/a_1') {
+        const body = await readRequestJson(request);
+        patched.push(body);
+        return json(response, { id: 'a_1', ...body });
+      }
+
+      response.statusCode = 404;
+      response.end('not found');
+    } catch (error) {
+      response.statusCode = 500;
+      response.end(error.stack || error.message);
+    }
+  });
+
+  await listen(server);
+  try {
+    const port = server.address().port;
+    const manifestPath = join(root, 'manifest.json');
+    const child = await runNode(['paperclip/profile-sync.mjs', 'once'], {
+      PROFILE_SYNC_ENABLED: '1',
+      PROFILE_SYNC_SKIP_GBRAIN_INIT: '1',
+      PAPERCLIP_PROFILE_SYNC_API_KEY: 'test-key',
+      PAPERCLIP_API_BASE: `http://127.0.0.1:${port}`,
+      PAPERCLIP_AGENT_API_URL: 'http://127.0.0.1:3100',
+      HERMES_DATA_ROOT: join(root, 'hermes'),
+      GBRAIN_DATA_ROOT: join(root, 'gbrain'),
+      PROFILE_SYNC_MANIFEST_PATH: manifestPath,
+      PROFILE_SYNC_TEMPLATE_DIR: join(process.cwd(), 'hermes-runtime/templates'),
+    });
+
+    assert.equal(child.code, 0, child.stderr);
+    assert.match(child.stdout, /"patched":1/);
+    assert.equal(patched.length, 1);
+    assert.equal(patched[0].metadata.agentStackProfileSlug, 'acme-inc-researcher');
+    assert.equal(
+      patched[0].adapterConfig.env.HERMES_HOME,
+      join(root, 'hermes/profiles/acme-inc-researcher'),
+    );
+    assert.equal(
+      patched[0].adapterConfig.env.GBRAIN_HOME,
+      join(root, 'gbrain/acme-inc-researcher'),
+    );
+    await stat(join(root, 'hermes/profiles/acme-inc-researcher/config.yaml'));
+    await stat(join(root, 'gbrain/acme-inc-researcher'));
+
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    assert.equal(manifest.managedAgents[0].agentId, 'a_1');
+    assert.equal(manifest.managedAgents[0].profileSlug, 'acme-inc-researcher');
+  } finally {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+function json(response, body) {
+  response.setHeader('content-type', 'application/json');
+  response.end(JSON.stringify(body));
+}
+
+async function readRequestJson(request) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+}
+
+async function listen(server) {
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+}
+
+async function runNode(args, env) {
+  const child = spawn(process.execPath, args, {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      ...env,
+    },
+  });
+  const stdout = [];
+  const stderr = [];
+  child.stdout.on('data', (chunk) => stdout.push(chunk));
+  child.stderr.on('data', (chunk) => stderr.push(chunk));
+  const code = await new Promise((resolve, reject) => {
+    child.on('error', reject);
+    child.on('exit', resolve);
+  });
+  return {
+    code,
+    stdout: Buffer.concat(stdout).toString('utf8'),
+    stderr: Buffer.concat(stderr).toString('utf8'),
+  };
+}

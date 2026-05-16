@@ -1,0 +1,21 @@
+mcp_servers:
+  gbrain:
+    command: "gbrain"
+    args: ["serve"]
+    enabled: true
+    timeout: 120
+    connect_timeout: 60
+    tools:
+      resources: true
+      prompts: false
+
+terminal:
+  cwd: "/opt/work"
+
+dashboard:
+  show_token_analytics: true
+
+skills:
+  disabled:
+    - minecraft-modpack-server
+    - pokemon-player

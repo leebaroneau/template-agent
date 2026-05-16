@@ -1,0 +1,83 @@
+services:
+  paperclip:
+    image: ${AGENT_STACK_IMAGE:-paperclip-hermes-gbrain:blank}
+    build:
+      context: .
+      dockerfile: ./paperclip/Dockerfile
+      args:
+        PAPERCLIP_VERSION: ${PAPERCLIP_VERSION:-2026.513.0}
+        HERMES_AGENT_REF: ${HERMES_AGENT_REF:-main}
+        GBRAIN_REF: ${GBRAIN_REF:-master}
+    environment:
+      PAPERCLIP_HOME: /data
+      PAPERCLIP_TELEMETRY_DISABLED: ${PAPERCLIP_TELEMETRY_DISABLED:-1}
+      PAPERCLIP_BIND: lan
+      PAPERCLIP_DEPLOYMENT_MODE: authenticated
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: private
+      PAPERCLIP_PUBLIC_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
+      PAPERCLIP_AUTH_PUBLIC_BASE_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
+      PAPERCLIP_ALLOWED_HOSTNAMES: ${PAPERCLIP_ALLOWED_HOSTNAMES:-localhost,127.0.0.1}
+      BETTER_AUTH_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
+      BETTER_AUTH_BASE_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
+      PORT: "3100"
+      HERMES_DATA_ROOT: /data/hermes
+      GBRAIN_DATA_ROOT: /data/gbrain
+      HERMES_HOME: /data/hermes
+      GBRAIN_HOME: /data/gbrain/default
+      HERMES_PROFILES: ${HERMES_PROFILES:-default}
+      PAPERCLIP_API_URL: http://127.0.0.1:3100
+      PROFILE_SYNC_ENABLED: ${PROFILE_SYNC_ENABLED:-0}
+      PROFILE_SYNC_INTERVAL_SEC: ${PROFILE_SYNC_INTERVAL_SEC:-60}
+      PROFILE_SYNC_DELETE_MODE: ${PROFILE_SYNC_DELETE_MODE:-archive}
+      PROFILE_SYNC_MANIFEST_PATH: /data/agent-stack/profile-sync/manifest.json
+      PROFILE_SYNC_TEMPLATE_DIR: /opt/hermes-runtime/templates
+      PROFILE_SYNC_API_BASE: ${PROFILE_SYNC_API_BASE:-http://127.0.0.1:3100}
+      PAPERCLIP_AGENT_API_URL: ${PAPERCLIP_AGENT_API_URL:-http://127.0.0.1:3100}
+      PAPERCLIP_PROFILE_SYNC_API_KEY: ${PAPERCLIP_PROFILE_SYNC_API_KEY:-}
+      PAPERCLIP_COMPANY_IDS: ${PAPERCLIP_COMPANY_IDS:-}
+      PAPERCLIP_COMPANIES: ${PAPERCLIP_COMPANIES:-}
+    ports:
+      - "${PAPERCLIP_PORT:-3100}:3100"
+    volumes:
+      - paperclip-data:/data
+    labels:
+      - traefik.enable=true
+      - traefik.http.middlewares.gzip.compress=true
+      - traefik.http.routers.http-paperclip-hermes-gbrain-paperclip.entryPoints=http
+      - traefik.http.routers.http-paperclip-hermes-gbrain-paperclip.middlewares=gzip
+      - traefik.http.routers.http-paperclip-hermes-gbrain-paperclip.rule=Host(`${PAPERCLIP_HOSTNAME:-paperclip.example.com}`) && PathPrefix(`/`)
+      - traefik.http.routers.http-paperclip-hermes-gbrain-paperclip.service=http-paperclip-hermes-gbrain-paperclip
+      - traefik.http.services.http-paperclip-hermes-gbrain-paperclip.loadbalancer.server.port=3100
+    restart: unless-stopped
+
+  hermes:
+    image: ${AGENT_STACK_IMAGE:-paperclip-hermes-gbrain:blank}
+    entrypoint: ["/usr/bin/tini", "--", "/opt/paperclip/hermes-entrypoint.sh"]
+    environment:
+      HERMES_DATA_ROOT: /data/hermes
+      GBRAIN_DATA_ROOT: /data/gbrain
+      HERMES_HOME: /data/hermes
+      GBRAIN_HOME: /data/gbrain/default
+      HERMES_PROFILES: ${HERMES_PROFILES:-default}
+      HERMES_DASHBOARD_HOST: 0.0.0.0
+      HERMES_DASHBOARD_PORT: "9119"
+      HERMES_DASHBOARD_TUI: ${HERMES_DASHBOARD_TUI:-1}
+      HERMES_DASHBOARD_SKIP_BUILD: ${HERMES_DASHBOARD_SKIP_BUILD:-1}
+    ports:
+      - "${HERMES_PORT:-9119}:9119"
+    volumes:
+      - paperclip-data:/data
+    depends_on:
+      - paperclip
+    labels:
+      - traefik.enable=true
+      - traefik.http.middlewares.gzip.compress=true
+      - traefik.http.routers.http-paperclip-hermes-gbrain-hermes.entryPoints=http
+      - traefik.http.routers.http-paperclip-hermes-gbrain-hermes.middlewares=gzip
+      - traefik.http.routers.http-paperclip-hermes-gbrain-hermes.rule=Host(`${HERMES_HOSTNAME:-hermes.example.com}`) && PathPrefix(`/`)
+      - traefik.http.routers.http-paperclip-hermes-gbrain-hermes.service=http-paperclip-hermes-gbrain-hermes
+      - traefik.http.services.http-paperclip-hermes-gbrain-hermes.loadbalancer.server.port=9119
+    restart: unless-stopped
+
+volumes:
+  paperclip-data:
