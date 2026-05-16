@@ -48,6 +48,56 @@ install_gbrain_skills() {
   done
 }
 
+# Idempotently add any mcp_servers entries that exist in the template config
+# but are missing from this profile's config. Existing entries are NEVER
+# overwritten, so user customisations (different command path, disabled flag,
+# extra fields) are preserved. New top-level keys added to the template
+# (e.g. paperclip MCP server) are inherited by existing profiles on next boot.
+#
+# Uses Hermes' bundled Python interpreter for PyYAML.
+sync_mcp_servers_from_template() {
+  local profile_config="$1"
+  local template_config="$TEMPLATE_DIR/config.yaml"
+  local python_bin="/usr/local/lib/hermes-agent/venv/bin/python"
+
+  if [[ ! -f "$profile_config" || ! -f "$template_config" || ! -x "$python_bin" ]]; then
+    return 0
+  fi
+
+  "$python_bin" - "$template_config" "$profile_config" <<'PYEOF'
+import sys
+import yaml
+
+template_path, profile_path = sys.argv[1], sys.argv[2]
+
+with open(template_path) as f:
+    template = yaml.safe_load(f) or {}
+
+with open(profile_path) as f:
+    profile = yaml.safe_load(f) or {}
+
+template_mcp = template.get("mcp_servers") or {}
+if not template_mcp:
+    sys.exit(0)
+
+profile_mcp = profile.get("mcp_servers") or {}
+added = []
+for name, spec in template_mcp.items():
+    if name not in profile_mcp:
+        profile_mcp[name] = spec
+        added.append(name)
+
+if not added:
+    sys.exit(0)
+
+profile["mcp_servers"] = profile_mcp
+with open(profile_path, "w") as f:
+    yaml.safe_dump(profile, f, sort_keys=False)
+
+print(f"[bootstrap] merged mcp_servers into {profile_path}: {', '.join(added)}", file=sys.stderr)
+PYEOF
+}
+
 IFS=',' read -ra profiles <<< "$HERMES_PROFILES"
 for raw_profile in "${profiles[@]}"; do
   profile="$(echo "$raw_profile" | tr '[:upper:]' '[:lower:]' | xargs)"
@@ -70,6 +120,8 @@ for raw_profile in "${profiles[@]}"; do
 
   if [[ ! -f "$profile_home/config.yaml" ]]; then
     cp "$TEMPLATE_DIR/config.yaml" "$profile_home/config.yaml"
+  else
+    sync_mcp_servers_from_template "$profile_home/config.yaml"
   fi
 
   if [[ ! -f "$profile_home/SOUL.md" ]]; then
@@ -96,3 +148,14 @@ for raw_profile in "${profiles[@]}"; do
     GBRAIN_HOME="$gbrain_home" gbrain config set search.mode conservative >/dev/null 2>&1 || true
   fi
 done
+
+# Sweep any profile homes profile-sync may have created at runtime (per-role
+# Hermes profiles for Paperclip agents). Each gets the same MCP-server merge
+# pass so new template entries propagate without manual patching.
+if [[ -d "$HERMES_DATA_ROOT/profiles" ]]; then
+  for runtime_profile_home in "$HERMES_DATA_ROOT"/profiles/*/; do
+    [[ -d "$runtime_profile_home" ]] || continue
+    [[ -f "$runtime_profile_home/config.yaml" ]] || continue
+    sync_mcp_servers_from_template "$runtime_profile_home/config.yaml"
+  done
+fi

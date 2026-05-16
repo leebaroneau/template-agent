@@ -154,6 +154,15 @@ PAPERCLIP_PROFILE_SYNC_API_KEY=<pcp_board_...>   # same key as PAPERCLIP_API_KEY
 
 For single-VM deployments, profile-sync env can live in `/data/agent-stack/profile-sync/profile-sync.env` (root-readable) instead of Coolify env. Override `ORG_MIRROR_ROOT` only if you need the org chart files somewhere other than `/data/agent-stack`.
 
+### Coolify routing notes
+
+Coolify renders `docker-compose.yaml` with `$` escaped to `$$`, which means `${PAPERCLIP_HOSTNAME}` / `${HERMES_HOSTNAME}` in the Traefik labels stays *literal* instead of being substituted. The template uses these variables (they work in plain Docker Compose), but for Coolify deployments pick one of:
+
+1. **Set per-service domains in the Coolify app UI** (recommended). Coolify auto-injects the right Caddy/Traefik labels at deploy time and the compose label is harmless. Make sure each service that needs a public route has its FQDN set — the primary service gets one for free; secondary services (`hermes`) need it added explicitly.
+2. **Hardcode the hostnames in your brand-specific compose fork**. If you've copied this template into a separate brand repo (per "Clone For A Brand" above), edit the Traefik labels to use literal hostnames instead of `${VAR}` placeholders.
+
+Symptom of hitting this: the primary service (e.g. `paperclip.<your-domain>`) loads fine but the secondary service (`hermes.<your-domain>`) returns 404. Check the running container's labels (`docker inspect ...` and look at `traefik.http.routers.*.rule`) — if you see `${HERMES_HOSTNAME:-...}` literally, Coolify didn't substitute and the route never matches.
+
 ## Paperclip MCP Server
 
 The blank Hermes config is intentionally empty, with one exception: a Paperclip MCP server is wired in by default so Hermes agents in any new setup can file and track work in Paperclip through typed tool calls instead of constructing shell `curl` commands.
@@ -198,6 +207,10 @@ docker compose --env-file .env exec paperclip node /opt/paperclip/mcp-paperclip/
 ```
 
 A healthy server replies with `serverInfo: {"name":"paperclip","version":"0.1.0"}`.
+
+### Propagation to existing profiles
+
+When you (or an upstream update) add a new MCP server to `hermes-runtime/templates/config.yaml`, the `bootstrap-profiles.sh` entrypoint script idempotently merges any *missing* `mcp_servers.*` entries into every profile config on the next container start — both `HERMES_PROFILES`-listed profiles AND per-role profiles that `profile-sync.mjs` created at runtime under `/data/hermes/profiles/`. Existing entries are never overwritten, so per-profile customisations are preserved. New servers added to the template propagate to every Hermes profile automatically without a manual patch.
 
 ## Runtime Patches
 
