@@ -121,7 +121,7 @@ test('ensureProfileHomes creates profile config, soul, and gbrain directory', as
 
     assert.equal(result.hermesHome, join(root, 'hermes/profiles/acme-researcher'));
     assert.equal(result.gbrainHome, join(root, 'gbrain/acme-researcher'));
-    assert.match(await readFile(join(result.hermesHome, 'config.yaml'), 'utf8'), /gbrain:/);
+    assert.equal(await readFile(join(result.hermesHome, 'config.yaml'), 'utf8'), '{}\n');
     assert.match(await readFile(join(result.hermesHome, 'SOUL.md'), 'utf8'), /Hermes/);
     await stat(result.gbrainHome);
   } finally {

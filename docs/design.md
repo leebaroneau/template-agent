@@ -15,6 +15,7 @@ Provide a GitHub-cloneable Paperclip + Hermes + GBrain template that can be depl
 
 - No Paperclip instances are committed.
 - No Hermes profiles are committed except neutral templates under `hermes-runtime/templates`.
+- The default Hermes `config.yaml` is an empty YAML map; runtime/client settings should be added per client after deploy.
 - No GBrain homes or PGLite stores are committed.
 - No client domains, names, tokens, or Coolify deployment values are committed.
 - The Dockerfile removes build-time Hermes bootstrap state and leaves `/data` empty in the final image.

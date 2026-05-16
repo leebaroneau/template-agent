@@ -46,6 +46,13 @@ for expected in \
   fi
 done
 
+if [[ "$(tr -d '[:space:]' < hermes-runtime/templates/config.yaml)" != "{}" ]]; then
+  echo "hermes-runtime/templates/config.yaml should be an empty YAML map for a blank template." >&2
+  failed=1
+fi
+
+check_absent "hermes-runtime/templates/config.yaml" 'mcp_servers:|terminal:|dashboard:|skills:' "blank Hermes config should not ship default settings"
+
 if [[ "$failed" -ne 0 ]]; then
   exit 1
 fi

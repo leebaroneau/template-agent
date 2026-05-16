@@ -65,6 +65,10 @@ The audit fails if the image contains runtime state under `/data`, Lee/client de
 
 The Dockerfile deliberately cleans `/data` during build. Runtime data appears only after a container starts with the `paperclip-data` volume mounted.
 
+The default Hermes config is intentionally empty. The template only bootstraps neutral profile files, installs GBrain skills into Hermes profiles, and creates a separate GBrain home for each synced role.
+
+Profile sync is available in the `paperclip` container. Enable it with `PROFILE_SYNC_ENABLED=1` and a `PAPERCLIP_PROFILE_SYNC_API_KEY` when you want Paperclip roles to be patched to their own Hermes profile and GBrain home.
+
 To reset a local test install:
 
 ```bash
