@@ -44,6 +44,14 @@ services:
       - "${PAPERCLIP_PORT:-3100}:3100"
     volumes:
       - paperclip-data:/data
+    labels:
+      - traefik.enable=true
+      - traefik.http.middlewares.gzip.compress=true
+      - traefik.http.routers.paperclip.entryPoints=http
+      - traefik.http.routers.paperclip.middlewares=gzip
+      - traefik.http.routers.paperclip.rule=Host(`${SERVICE_FQDN_PAPERCLIP_3100}`)
+      - traefik.http.routers.paperclip.service=paperclip
+      - traefik.http.services.paperclip.loadbalancer.server.port=3100
     restart: unless-stopped
 
   hermes:
@@ -69,6 +77,14 @@ services:
       - paperclip-data:/data
     depends_on:
       - paperclip
+    labels:
+      - traefik.enable=true
+      - traefik.http.middlewares.gzip.compress=true
+      - traefik.http.routers.hermes.entryPoints=http
+      - traefik.http.routers.hermes.middlewares=gzip
+      - traefik.http.routers.hermes.rule=Host(`${SERVICE_FQDN_HERMES_9119}`)
+      - traefik.http.routers.hermes.service=hermes
+      - traefik.http.services.hermes.loadbalancer.server.port=9119
     restart: unless-stopped
 
 volumes:
