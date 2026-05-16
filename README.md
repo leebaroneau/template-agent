@@ -118,14 +118,9 @@ After the stack is deployed (locally or via Coolify) and the containers are runn
    ```
 
 5. **Paste the generated values into Coolify**, replacing the example domain with the real client domain.
-6. **Set per-service FQDNs** so Coolify auto-injects routing labels for BOTH services (the compose's own `${HERMES_HOSTNAME}` placeholders won't work — see "Coolify routing notes" below):
+6. **Set per-service domains in the Coolify app UI.** Open the app → *Configuration* → set a domain for `paperclip` (`paperclip.<client-domain>`) and another for `hermes` (`hermes.<client-domain>`). Coolify uses this map to inject the working Traefik routers — the compose's own `${PAPERCLIP_HOSTNAME}` / `${HERMES_HOSTNAME}` placeholders are NOT substituted under Coolify (see "Coolify routing notes" below).
 
-   ```env
-   SERVICE_FQDN_PAPERCLIP=paperclip.<client-domain>
-   SERVICE_FQDN_HERMES=hermes.<client-domain>
-   ```
-
-   Setting the app's primary FQDN in the Coolify UI usually auto-creates `SERVICE_FQDN_PAPERCLIP`. `SERVICE_FQDN_HERMES` is the one easy to forget — without it the secondary service has no public route.
+   If you only ever expose paperclip via the app's primary FQDN field, Coolify will auto-route paperclip but leave hermes at a 404 — the per-service domain map is the one easy step to miss.
 
 7. **(Optional) Render brand-specific compose routes** if you'd rather hardcode the Traefik labels in a brand fork:
 
@@ -144,11 +139,9 @@ PAPERCLIP_PUBLIC_URL=https://paperclip.<client-domain>
 PAPERCLIP_ALLOWED_HOSTNAMES=paperclip.<client-domain>,localhost,127.0.0.1
 PAPERCLIP_HOSTNAME=paperclip.<client-domain>
 HERMES_HOSTNAME=hermes.<client-domain>
-SERVICE_FQDN_PAPERCLIP=paperclip.<client-domain>
-SERVICE_FQDN_HERMES=hermes.<client-domain>
 ```
 
-The `SERVICE_FQDN_*` pair is what Coolify actually uses to inject routing labels at deploy time (see "Coolify routing notes"). The `PAPERCLIP_HOSTNAME` / `HERMES_HOSTNAME` pair is what the compose's own Traefik labels reference — those won't substitute under Coolify but cost nothing to keep set for parity with non-Coolify Compose use.
+Public routing is configured separately via the Coolify per-service domain map (step 6 of *Setting Up A New Coolify Stack*) — not via env vars. The `PAPERCLIP_HOSTNAME` / `HERMES_HOSTNAME` pair is only used by the compose's own Traefik labels for plain `docker compose` deployments, which Coolify doesn't substitute (see "Coolify routing notes"). Keeping them set on a Coolify deploy is harmless and documents intent.
 
 **Required to activate the Paperclip MCP server** (set after First-Run step 3 mints a key):
 
@@ -172,12 +165,14 @@ For single-VM deployments, profile-sync env can live in `/data/agent-stack/profi
 
 ### Coolify routing notes
 
-Coolify renders `docker-compose.yaml` with `$` escaped to `$$`, which means `${PAPERCLIP_HOSTNAME}` / `${HERMES_HOSTNAME}` in the Traefik labels stays *literal* instead of being substituted. The template uses these variables (they work in plain Docker Compose), but for Coolify deployments pick one of:
+Coolify renders `docker-compose.yaml` with `$` escaped to `$$` inside the `labels:` block. That means `${PAPERCLIP_HOSTNAME}` / `${HERMES_HOSTNAME}` in the Traefik labels stay *literal* instead of being substituted — and the same is true for Coolify's own magic vars like `${SERVICE_FQDN_*}` when written into compose labels. Setting `SERVICE_FQDN_HERMES_9119` or `SERVICE_FQDN_HERMES` as an env var does NOT generate routing labels on its own.
 
-1. **Set per-service domains in the Coolify app UI** (recommended). Coolify auto-injects the right Caddy/Traefik labels at deploy time and the compose label is harmless. Make sure each service that needs a public route has its FQDN set — the primary service gets one for free; secondary services (`hermes`) need it added explicitly.
-2. **Hardcode the hostnames in your brand-specific compose fork**. If you've copied this template into a separate brand repo (per "Clone For A Brand" above), edit the Traefik labels to use literal hostnames instead of `${VAR}` placeholders.
+What Coolify *does* read is the per-service domain map on the application resource. Set it via the UI (recommended) or the API:
 
-Symptom of hitting this: the primary service (e.g. `paperclip.<your-domain>`) loads fine but the secondary service (`hermes.<your-domain>`) returns 404. Check the running container's labels (`docker inspect ...` and look at `traefik.http.routers.*.rule`) — if you see `${HERMES_HOSTNAME:-...}` literally, Coolify didn't substitute and the route never matches.
+1. **Coolify UI:** App → *Configuration* → set domain per service (`paperclip` → `paperclip.<your-domain>`, `hermes` → `hermes.<your-domain>`). Coolify auto-injects working Traefik routers (`http-0-<uuid>-<service>.rule=Host(\`...\`)`) at next deploy. The compose's own labels become no-ops but cost nothing.
+2. **Coolify API:** `PATCH /api/v1/applications/<uuid>` with body `{"docker_compose_domains":{"paperclip":{"name":"paperclip","domain":"http://paperclip.<your-domain>"},"hermes":{"name":"hermes","domain":"http://hermes.<your-domain>"}}}`. Trigger a redeploy after — the change takes effect when the next deploy renders Traefik labels.
+
+Symptom of missing this step: `paperclip.<your-domain>` works (Coolify routes the app's primary FQDN to the first compose service for free) but `hermes.<your-domain>` returns 404. `docker inspect <hermes-container> | grep traefik` shows either no routers or routers with literal `${VAR}` text — both mean the per-service map was never set.
 
 ## Paperclip MCP Server
 
