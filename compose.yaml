@@ -1,13 +1,6 @@
 services:
   paperclip:
-    image: ${AGENT_STACK_IMAGE:-paperclip-hermes-gbrain:blank}
-    build:
-      context: .
-      dockerfile: ./paperclip/Dockerfile
-      args:
-        PAPERCLIP_VERSION: ${PAPERCLIP_VERSION:-2026.513.0}
-        HERMES_AGENT_REF: ${HERMES_AGENT_REF:-main}
-        GBRAIN_REF: ${GBRAIN_REF:-master}
+    image: ${AGENT_STACK_IMAGE:-ghcr.io/leebaroneau/paperclip-hermes-gbrain:latest}
     environment:
       PAPERCLIP_HOME: /data
       PAPERCLIP_TELEMETRY_DISABLED: ${PAPERCLIP_TELEMETRY_DISABLED:-1}
@@ -55,7 +48,7 @@ services:
     restart: unless-stopped
 
   hermes:
-    image: ${AGENT_STACK_IMAGE:-paperclip-hermes-gbrain:blank}
+    image: ${AGENT_STACK_IMAGE:-ghcr.io/leebaroneau/paperclip-hermes-gbrain:latest}
     entrypoint: ["/usr/bin/tini", "--", "/opt/paperclip/hermes-entrypoint.sh"]
     environment:
       HERMES_DATA_ROOT: /data/hermes
