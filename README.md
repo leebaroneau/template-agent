@@ -4,11 +4,61 @@ Blank Coolify-ready template for running Paperclip with Hermes Agent and GBrain.
 
 This repo is intentionally client-neutral. It should contain the deploy recipe only. Paperclip projects, Hermes profiles, GBrain stores, API keys, and client data are created at runtime inside the Coolify volume mounted at `/data`.
 
+## Shape
+
+```text
+paperclip.<client-domain> -> paperclip:3100
+hermes.<client-domain>    -> hermes:9119
+
+Paperclip company → CEO agent → delegates to subordinate agents
+       │
+       ▼ each Paperclip agent uses adapterType: hermes_local
+       │
+       ▼
+hermes CLI runs locally inside the paperclip container
+       │
+       ▼
+       HERMES_HOME=/data/hermes/profiles/<company-role>   (per-agent profile)
+       │
+       ▼
+gbrain CLI for memory + knowledge
+       │
+       ▼
+       GBRAIN_HOME=/data/gbrain/<company-role>            (per-agent brain)
+```
+
+One image runs two services. Paperclip orchestrates; the Hermes dashboard serves the agent UI and transcript view. Both share `/data`, so memories, skills, and the org chart are visible from either side.
+
+The Paperclip MCP server (see below) closes the loop: Hermes-side agents can file and update Paperclip issues without leaving the conversation.
+
 ## Services
 
 - `paperclip` runs Paperclip on port `3100`.
 - `hermes` runs the Hermes dashboard on port `9119`.
 - Both services share the `paperclip-data` volume at `/data`.
+
+## /data Volume Layout
+
+Everything persistent lives under `/data`, mounted from the `paperclip-data` Docker volume.
+
+| Path | What lives there |
+|---|---|
+| `/data/paperclip.db` | Paperclip's SQLite database (companies, agents, issues, approvals, runs) |
+| `/data/instances/<company-slug>/` | Per-company project files, plan documents, attachments |
+| `/data/hermes/` | Default Hermes profile (config, skills, kanban, memory) |
+| `/data/hermes/profiles/<company-role>/` | Per-agent isolated Hermes profile (auto-created by profile-sync) |
+| `/data/hermes/archive/` | Archived profiles for terminated agents (`PROFILE_SYNC_DELETE_MODE=archive`) |
+| `/data/gbrain/default/` | Default GBrain home (reusable skills source) |
+| `/data/gbrain/<company-role>/` | Per-agent isolated GBrain (memory, knowledge pages) |
+| `/data/gbrain/archive/` | Archived GBrain homes for terminated agents |
+| `/data/agent-stack/important-information-index.md` | Shared human-maintained index (see below) |
+| `/data/agent-stack/learning-protocol.md` | Shared learning protocol (see below) |
+| `/data/agent-stack/delegation-protocol.md` | Shared delegation contract (see below) |
+| `/data/agent-stack/org-chart.{md,json}` | Mirrored Paperclip org chart (when profile-sync enabled) |
+| `/data/agent-stack/profile-sync/manifest.json` | Profile-sync state (which agents got which slugs) |
+| `/data/.paperclip/` | Paperclip CLI auth state (board user credentials) |
+
+The Dockerfile clears `/data` at build time. Anything you see there at runtime was created after the container started.
 
 ## Local Smoke Test
 
@@ -28,68 +78,81 @@ Stop it with:
 ./scripts/local-down.sh
 ```
 
+## First-Run Flow
+
+After the stack is deployed (locally or via Coolify) and the containers are running:
+
+1. **Open Paperclip and claim the first admin user.** Paperclip runs in `PAPERCLIP_DEPLOYMENT_MODE=authenticated`. The first visitor to `https://paperclip.<your-domain>/` (or `http://localhost:3100/` locally) is prompted to claim the instance. If no claim flow appears, run `paperclipai auth bootstrap-ceo` inside the container to mint a one-time invite URL.
+
+2. **Create or claim a company.** Each company is its own Paperclip workspace. Set a goal, name a CEO. The default Hermes agent is seeded automatically when profile-sync is enabled — otherwise see "Seed Default Hermes Agent" below.
+
+3. **Mint a board API key.** From inside the container:
+
+   ```bash
+   docker compose --env-file .env exec paperclip paperclipai auth login --api-base http://127.0.0.1:3100
+   ```
+
+   The CLI prints an approval URL. Open it in a browser, sign in, click approve. The CLI then has a `pcp_board_*` token in hand.
+
+4. **Set `PAPERCLIP_API_KEY` in env** (Coolify or local `.env`). This activates the Paperclip MCP server inside Hermes — without a key, every MCP tool call from Hermes will return 401.
+
+5. **Optionally set `PROFILE_SYNC_ENABLED=1`** and `PAPERCLIP_PROFILE_SYNC_API_KEY=<same-key>` to give each Paperclip agent its own isolated Hermes profile and GBrain home (see "Profile Sync & Org Chart").
+
+6. **Redeploy / restart** so the env changes land in the container.
+
+7. **Talk to Hermes** via the dashboard (`https://hermes.<your-domain>/chat`) or any configured messaging gateway. Hermes can now call Paperclip tools — say *"list paperclip companies"* and the MCP server replies with the live roster.
+
 ## Coolify Setup
 
 1. Create a new Docker Compose app in Coolify from this GitHub repo.
-2. Set the public domains you want to use, usually:
+2. Pick the public domains:
    - `paperclip.<client-domain>`
    - `hermes.<client-domain>`
-3. Generate starter environment values:
+3. Generate starter env values:
 
-```bash
-./scripts/coolify-env.sh client.example.com
+   ```bash
+   ./scripts/coolify-env.sh client.example.com
+   ```
+
+4. Paste the generated values into Coolify, replacing the example domain with the real client domain.
+5. (Optional) Render brand-specific compose routes:
+
+   ```bash
+   ./scripts/render-coolify-compose.sh client.example.com client-agent-stack
+   ```
+
+6. Deploy. Then follow the First-Run Flow above to mint the API key and activate the MCP server.
+
+### Coolify env variable checklist
+
+**Required for any deployment:**
+
+```env
+PAPERCLIP_PUBLIC_URL=https://paperclip.<client-domain>
+PAPERCLIP_ALLOWED_HOSTNAMES=paperclip.<client-domain>,localhost,127.0.0.1
+PAPERCLIP_HOSTNAME=paperclip.<client-domain>
+HERMES_HOSTNAME=hermes.<client-domain>
 ```
 
-4. Paste the generated values into Coolify and replace the example domain with the real client domain.
-5. Enable role profile sync so Paperclip roles get their own Hermes profile and GBrain home:
+**Required to activate the Paperclip MCP server** (set after First-Run step 3 mints a key):
+
+```env
+PAPERCLIP_API_KEY=<pcp_board_...>
+PAPERCLIP_DEFAULT_COMPANY_ID=<uuid>   # optional, single-company convenience
+```
+
+**Required to enable per-role profile sync:**
 
 ```env
 PROFILE_SYNC_ENABLED=1
 PROFILE_SYNC_INTERVAL_SEC=60
 PROFILE_SYNC_DELETE_MODE=archive
-PAPERCLIP_PROFILE_SYNC_API_KEY=<paperclip-api-key>
+PAPERCLIP_PROFILE_SYNC_API_KEY=<pcp_board_...>   # same key as PAPERCLIP_API_KEY is fine
 ```
 
-For single-VM deployments, the same values can live in this root-readable file
-instead of Coolify env:
+**Do NOT add blank LLM provider keys** (`OPENAI_API_KEY=`, `ANTHROPIC_API_KEY=`, `OPENROUTER_API_KEY=`) to Coolify. Hermes boots without them; the first-run flow configures a provider via the dashboard at `hermes.<client-domain>/env`.
 
-```text
-/data/agent-stack/profile-sync/profile-sync.env
-```
-
-Leave these blank unless you want to sync only specific companies:
-
-```env
-PAPERCLIP_COMPANY_IDS=
-PAPERCLIP_COMPANIES=
-```
-
-6. Deploy.
-
-For Coolify, make sure these values are not left as examples:
-
-- `PAPERCLIP_PUBLIC_URL`
-- `PAPERCLIP_ALLOWED_HOSTNAMES`
-- `PAPERCLIP_HOSTNAME`
-- `HERMES_HOSTNAME`
-- `PAPERCLIP_PROFILE_SYNC_API_KEY`
-
-If `PROFILE_SYNC_ENABLED` is not `1`, roles will not be automatically patched. When sync is enabled, each role is patched to:
-
-```text
-/data/hermes/profiles/<company-role>
-/data/gbrain/<company-role>
-```
-
-Profile sync also mirrors the current Paperclip companies and agents into:
-
-```text
-/data/agent-stack/org-chart.md
-/data/agent-stack/org-chart.json
-```
-
-Use `ORG_MIRROR_ROOT` only if you need to place those files somewhere other than
-`/data/agent-stack`.
+For single-VM deployments, profile-sync env can live in `/data/agent-stack/profile-sync/profile-sync.env` (root-readable) instead of Coolify env. Override `ORG_MIRROR_ROOT` only if you need the org chart files somewhere other than `/data/agent-stack`.
 
 ## Paperclip MCP Server
 
@@ -136,6 +199,121 @@ docker compose --env-file .env exec paperclip node /opt/paperclip/mcp-paperclip/
 
 A healthy server replies with `serverInfo: {"name":"paperclip","version":"0.1.0"}`.
 
+## Runtime Patches
+
+The `paperclip` container's entrypoint runs three small Node patches against Paperclip's bundled npm package before starting the server. These rewrite a few lines in place each boot so the agent stack behaves correctly:
+
+| Patch | What it changes |
+|---|---|
+| `patch-paperclip-hermes-defaults.mjs` | When Paperclip creates a `hermes_local` agent, inject `HERMES_MODEL` / `HERMES_PROVIDER` defaults from the Hermes profile config so newly-hired agents don't fall back to the bundled adapter's hardcoded Anthropic model. |
+| `patch-hermes-adapter-env.mjs` | Unwrap Paperclip's env-binding objects when passing to the Hermes child process. Without this, `HERMES_HOME`, `GBRAIN_HOME`, and `PAPERCLIP_API_URL` reach Hermes as objects instead of strings. |
+| `patch-paperclip-company-prefix.mjs` | Relax Paperclip's company URL-key prefix constraints to allow the slugs the agent stack uses. |
+
+All three are idempotent and re-applied on every container start. If you upgrade Paperclip (`PAPERCLIP_VERSION` build arg), re-run the patch tests:
+
+```bash
+node paperclip/patch-paperclip-hermes-defaults.test.mjs
+node paperclip/patch-hermes-adapter-env.test.mjs
+node paperclip/patch-paperclip-company-prefix.test.mjs
+```
+
+## Seed Default Hermes Agent
+
+`paperclip/seed-agents.mjs` ensures every Paperclip company has a default `Hermes` agent ready to receive work, using `adapterType: hermes_local`. Profile-sync invokes it automatically; you can also run it by hand:
+
+```bash
+PAPERCLIP_API_BASE=http://localhost:3100 \
+PAPERCLIP_API_KEY=<pcp_board_...> \
+PAPERCLIP_COMPANY_ID=<company-uuid> \
+node paperclip/seed-agents.mjs
+```
+
+The script POSTs or PATCHes a single `Hermes` agent per company with:
+- `runtimeConfig.heartbeat.enabled: false` (wake on demand, not on a timer)
+- `adapterConfig.env` pointing to the company-specific `HERMES_HOME` and `GBRAIN_HOME` paths
+- `capabilities` pointing the agent at the shared delegation protocol and org chart
+
+Re-running is safe: existing agents are patched, not duplicated.
+
+## GBrain Skills
+
+GBrain skills are installed into Hermes profiles and GBrain homes through two separate paths — both fire automatically, you don't need to wire anything up.
+
+**Bootstrap-time (every container start, every Hermes profile including `default`).**
+The `paperclip` entrypoint runs `bootstrap-profiles.sh`, which for each profile in `HERMES_PROFILES` (just `default` out of the box) symlinks every skill from `/opt/gbrain/skills/` (baked into the image from the upstream GBrain repo) into:
+
+```text
+/data/hermes/skills/gbrain/<skill-name>            # default profile
+/data/hermes/profiles/<company-role>/skills/gbrain/<skill-name>  # per-role
+```
+
+Because they're symlinks, upgrading GBrain (rebuilding the image with a newer `GBRAIN_REF`) makes every profile pick up the new skills with no manual intervention. Override the source path with `GBRAIN_SKILLS_SOURCE=/some/other/dir` if needed.
+
+**Profile-sync-time (per-role GBrain home creation).**
+When profile-sync provisions a new per-role GBrain home, it copies (NOT symlinks) these paths from `/data/gbrain/default/` into the new home so each role starts with the same skill set:
+
+```text
+skills/                   # user-installed GBrain skills
+.gbrain/skills/           # internal GBrain skills
+.gbrain/prompts/
+.gbrain/conventions/
+AGENTS.md, RESOLVER.md, gbrain.yml
+```
+
+User-added skills you drop into `/data/gbrain/default/skills/` after the stack is up are picked up by the next profile-sync iteration. The default GBrain database and knowledge pages are NOT copied — memory stays isolated per role.
+
+## Profile Sync & Org Chart
+
+The `paperclip` container can run an embedded reconciliation loop that mirrors Paperclip's roster into per-role Hermes profiles and GBrain homes. Enable it in env:
+
+```env
+PROFILE_SYNC_ENABLED=1
+PROFILE_SYNC_INTERVAL_SEC=60
+PROFILE_SYNC_DELETE_MODE=archive
+PAPERCLIP_PROFILE_SYNC_API_KEY=<pcp_board_...>
+```
+
+Every `hermes_local` Paperclip agent gets:
+
+```text
+Hermes profile: /data/hermes/profiles/<company-role>
+GBrain home:    /data/gbrain/<company-role>
+```
+
+The profile slug is stored on the Paperclip agent's metadata, so company or role renames don't move existing memories.
+
+New profile homes inherit the default profile's reusable setup:
+- `/data/hermes/*` is copied except runtime profile/archive/cache/log folders
+- `/data/gbrain/default/skills` and `/data/gbrain/default/.gbrain/skills` are copied when present
+
+The default GBrain database, config, and knowledge pages are **not** copied — reusable skills are shared, but memory stays isolated per role.
+
+When an agent disappears from a successfully-scanned company:
+- `archive` mode (default): folders move under `/data/hermes/archive/` and `/data/gbrain/archive/`
+- `purge` mode: permanent deletion
+
+**Org chart mirroring.** Each sync iteration also writes the current Paperclip org chart to:
+
+```text
+/data/agent-stack/org-chart.md     (human-readable, with reportsTo lines)
+/data/agent-stack/org-chart.json   (machine-readable, consumed by agents)
+```
+
+The Delegation Protocol (below) tells agents to consult these before accepting, rerouting, or completing issues.
+
+**Optional company scoping** (default: every company the key has access to):
+
+```env
+PAPERCLIP_COMPANY_IDS=co_123,co_456
+PAPERCLIP_COMPANIES=co_123:Acme,co_456:Koenig
+```
+
+Run one sync manually from the running container:
+
+```bash
+docker compose --env-file .env exec paperclip node /opt/paperclip/profile-sync.mjs once
+```
+
 ## Blank Image Audit
 
 After a local build, audit the image before publishing or reusing it:
@@ -151,9 +329,34 @@ The audit fails if the image contains runtime state under `/data`, Lee/client de
 
 The Dockerfile deliberately cleans `/data` during build. Runtime data appears only after a container starts with the `paperclip-data` volume mounted.
 
-The default Hermes config is intentionally minimal — only the Paperclip MCP server is wired in (see the "Paperclip MCP Server" section above). The template only bootstraps neutral profile files, installs GBrain skills into Hermes profiles, and creates a separate GBrain home for each synced role.
+The default Hermes config is intentionally minimal — only the Paperclip MCP server is wired in (see the "Paperclip MCP Server" section above). The template bootstraps neutral profile files, installs GBrain skills into Hermes profiles, and creates a separate GBrain home for each synced role (see "Profile Sync & Org Chart" above).
 
-Profile sync is available in the `paperclip` container. Enable it with `PROFILE_SYNC_ENABLED=1` and a `PAPERCLIP_PROFILE_SYNC_API_KEY` when you want Paperclip roles to be patched to their own Hermes profile and GBrain home.
+## Scripts
+
+Everything in `scripts/`:
+
+| Script | What it does |
+|---|---|
+| `local-up.sh` / `local-down.sh` / `local-logs.sh` | Bring up, tear down, or stream logs from the local docker-compose stack. |
+| `validate-env.sh` | Sanity-check `.env` for required keys and shape. Pass `--coolify` to enforce stricter rules for Coolify deployments. |
+| `coolify-env.sh <domain>` | Generate a starter `.env` block for a brand domain. |
+| `render-coolify-compose.sh <domain> <project-name>` | Render `compose.yaml` with brand-specific Traefik labels and routes. |
+| `audit-blank-image.sh <image-tag>` | Inspect a built image for tokens, client data, runtime state under `/data`, or Coolify metadata leaks. |
+| `test-blank-template.sh` | Verify the repo state is genuinely client-neutral (no committed `data/`, `instances/`, `.env`, etc.). |
+| `test-default-profile-only.sh` | Assert no extra Hermes profiles bleed into the built image. |
+| `test-hermes-tui-prebuilt.sh` | Confirm the Hermes TUI is prebuilt in the image (faster cold-start). |
+| `test-no-provider-placeholders.sh` | Catch `OPENAI_API_KEY=` / `ANTHROPIC_API_KEY=` / `OPENROUTER_API_KEY=` empty rows that would break the Hermes `/env` first-run flow. |
+
+Run the audit + tests after building a new image:
+
+```bash
+docker compose --env-file .env.example build
+./scripts/audit-blank-image.sh paperclip-hermes-gbrain:blank
+./scripts/test-blank-template.sh
+./scripts/test-default-profile-only.sh
+./scripts/test-hermes-tui-prebuilt.sh
+./scripts/test-no-provider-placeholders.sh
+```
 
 ## Important Information Index
 
