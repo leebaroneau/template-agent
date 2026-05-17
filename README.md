@@ -258,6 +258,8 @@ PAPERCLIP_PROFILE_SYNC_API_KEY=<pcp_board_...>   # same key as PAPERCLIP_API_KEY
 
 Profile sync also grants `canAssignTasks` to active agents that have direct reports, preserving their existing `canCreateAgents` setting. Disable with `PROFILE_SYNC_GRANT_MANAGER_ASSIGN_TASKS=0` if a deployment wants CEO-only task assignment.
 
+Grants are **tracked in `/data/agent-stack/profile-sync/manifest.json` under `permissionedAgents`** and **revoked on a future cycle if the agent loses qualification** (e.g. its last direct report leaves). CEOs (`agent.role === 'ceo'`) are skipped in both grant and revoke paths because Paperclip surfaces their `canAssignTasks` via the role-derived `taskAssignSource: ceo_role` permission — the explicit-grant lifecycle is for non-CEO managers. Agents granted before this manifest tracking shipped are *not* eligible for the steady-state revoke; see [Cleaning up historical canAssignTasks drift](#cleaning-up-historical-canassigntasks-drift) below for the one-shot cleanup tool.
+
 **Gateway autostart for profiles with messaging credentials:**
 
 ```env
@@ -482,6 +484,28 @@ Run one sync manually from the running container:
 ```bash
 docker compose --env-file .env exec paperclip node /opt/paperclip/profile-sync.mjs once
 ```
+
+### Cleaning up historical `canAssignTasks` drift
+
+The steady-state revoke (see [Profile Sync & Org Chart](#profile-sync--org-chart)) only touches agents profile-sync recorded in its own manifest. Agents granted `canAssignTasks` by an earlier, more permissive code path — or by a manual click in the Paperclip UI — are not in the manifest and so are out of scope for the steady-state cleanup. For that one-time backfill, ship the deployment a one-shot script at `/opt/paperclip/narrow-grants.mjs`:
+
+```bash
+# Dry-run (default — lists candidates, makes no changes):
+docker exec <paperclip-container> sh -c '
+  PAPERCLIP_API_BASE=http://127.0.0.1:3100 \
+  PAPERCLIP_API_KEY=$PAPERCLIP_API_KEY \
+  node /opt/paperclip/narrow-grants.mjs'
+
+# Apply (only after eyeballing the dry-run output):
+docker exec <paperclip-container> sh -c '
+  PAPERCLIP_API_BASE=http://127.0.0.1:3100 \
+  PAPERCLIP_API_KEY=$PAPERCLIP_API_KEY \
+  node /opt/paperclip/narrow-grants.mjs --apply'
+```
+
+Why the explicit `PAPERCLIP_API_BASE=http://127.0.0.1:3100` override: the container's default `PAPERCLIP_API_BASE` points at the docker-compose service hostname (`http://paperclip:3100`), which doesn't resolve back to self from within the same container the way the entrypoint-spawned profile-sync subprocess sees it. Setting `127.0.0.1` for ad-hoc invocations sidesteps that.
+
+The script flags every agent that has `access.canAssignTasks=true && access.taskAssignSource='explicit_grant'` AND zero direct reports. CEOs (`source: ceo_role`) are skipped automatically because they don't match the `explicit_grant` filter. Revoke payload preserves the agent's existing `canCreateAgents` bit. If a candidate looks wrong (e.g. an "Engineering Manager" that *should* have reports but doesn't in the data), fix the `reportsTo` field in the Paperclip UI first — the steady-state reconcile will then re-grant on its next cycle.
 
 ## Blank Image Audit
 
