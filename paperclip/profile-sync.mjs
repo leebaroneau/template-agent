@@ -79,6 +79,26 @@ const GBRAIN_TEMPLATE_PATHS = [
   'gbrain.yaml',
 ];
 
+// Canonical list of Hermes well-known subdirs, mirroring upstream
+// hermes_cli/config.py:ensure_hermes_home(). Pre-creating these with stable
+// perms inside profile-sync eliminates the EACCES startup race where Paperclip
+// can dispatch an agent run before Hermes' own lazy mkdir window settles.
+//
+// Keep this list in lock-step with upstream. If a Hermes release adds a new
+// well-known subdir, append it here.
+export const HERMES_WELL_KNOWN_SUBDIRS = Object.freeze([
+  'cron',
+  'sessions',
+  'logs',
+  'logs/curator',
+  'memories',
+  'pairing',
+  'hooks',
+  'image_cache',
+  'audio_cache',
+  'skills',
+]);
+
 export function desiredProfileSlug(companyName, profileName, existingSlug) {
   if (existingSlug && isSafeSlug(existingSlug)) return existingSlug;
 
@@ -199,6 +219,7 @@ export async function ensureProfileHomes({
 
   await mkdir(hermesHome, { recursive: true });
   await mkdir(gbrainHome, { recursive: true });
+  await ensureHermesSubdirs(hermesHome);
 
   if (profileSlug !== 'default') {
     await cloneDefaultHermesProfile({ hermesDataRoot, hermesHome });
@@ -768,6 +789,17 @@ async function moveIfExists(fromPath, toPath) {
   if (!(await exists(fromPath))) return;
   await mkdir(dirname(toPath), { recursive: true });
   await rename(fromPath, toPath);
+}
+
+async function ensureHermesSubdirs(hermesHome) {
+  // Idempotent: every profile-sync iteration re-asserts the dir tree + perms,
+  // so a half-created profile or a stray chmod gets healed on the next pass.
+  await chmod(hermesHome, 0o700);
+  for (const relative of HERMES_WELL_KNOWN_SUBDIRS) {
+    const target = join(hermesHome, relative);
+    await mkdir(target, { recursive: true });
+    await chmod(target, 0o700);
+  }
 }
 
 async function exists(path) {

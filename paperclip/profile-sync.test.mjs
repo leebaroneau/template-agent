@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -269,6 +269,75 @@ test('ensureProfileHomes does not clone default Hermes runtime databases or sess
     ]) {
       await assert.rejects(stat(join(result.hermesHome, relativePath)), { code: 'ENOENT' });
     }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('ensureProfileHomes pre-creates Hermes well-known subdirs with 0700 perms', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-prewarm-'));
+  try {
+    const result = await ensureProfileHomes({
+      profileSlug: 'acme-researcher',
+      hermesDataRoot: join(root, 'hermes'),
+      gbrainDataRoot: join(root, 'gbrain'),
+      templateDir: join(process.cwd(), 'hermes-runtime/templates'),
+      initGbrain: false,
+    });
+
+    const expected = [
+      'cron',
+      'sessions',
+      'logs',
+      'logs/curator',
+      'memories',
+      'pairing',
+      'hooks',
+      'image_cache',
+      'audio_cache',
+      'skills',
+    ];
+
+    for (const rel of expected) {
+      const info = await stat(join(result.hermesHome, rel));
+      assert.ok(info.isDirectory(), `${rel} should be a directory`);
+      assert.equal(
+        info.mode & 0o777,
+        0o700,
+        `${rel} should be mode 0700, got ${(info.mode & 0o777).toString(8)}`,
+      );
+    }
+
+    const homeInfo = await stat(result.hermesHome);
+    assert.equal(homeInfo.mode & 0o777, 0o700, 'hermesHome should be mode 0700');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('ensureProfileHomes restores broken perms on Hermes well-known subdirs (self-heal)', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-prewarm-heal-'));
+  try {
+    const callOnce = () =>
+      ensureProfileHomes({
+        profileSlug: 'acme-researcher',
+        hermesDataRoot: join(root, 'hermes'),
+        gbrainDataRoot: join(root, 'gbrain'),
+        templateDir: join(process.cwd(), 'hermes-runtime/templates'),
+        initGbrain: false,
+      });
+
+    const first = await callOnce();
+    const curatorPath = join(first.hermesHome, 'logs', 'curator');
+    await chmod(curatorPath, 0o000);
+
+    await callOnce();
+    const restored = await stat(curatorPath);
+    assert.equal(
+      restored.mode & 0o777,
+      0o700,
+      'curator perms should be restored to 0700 on next sync',
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
