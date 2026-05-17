@@ -7,6 +7,7 @@ on:
       - paperclip/Dockerfile
       - paperclip/**
       - hermes-runtime/**
+      - compose.yaml
       - .github/workflows/build-image.yml
   workflow_dispatch:
     inputs:
