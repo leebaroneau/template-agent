@@ -91,3 +91,11 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.COOLIFY_LEEBARONE_TOKEN }}" \
             "${{ vars.COOLIFY_LEEBARONE_BASE_URL }}/api/v1/deploy?uuid=${{ vars.COOLIFY_LEEBARONE_APP_UUID }}&force=false" \
             || echo "leebarone deploy trigger failed (non-fatal)"
+
+      - name: Trigger Genvest Coolify deploy
+        if: success() && vars.COOLIFY_GENVEST_BASE_URL != '' && vars.COOLIFY_GENVEST_APP_UUID != ''
+        run: |
+          curl -sf -X GET \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_GENVEST_TOKEN }}" \
+            "${{ vars.COOLIFY_GENVEST_BASE_URL }}/api/v1/deploy?uuid=${{ vars.COOLIFY_GENVEST_APP_UUID }}&force=false" \
+            || echo "Genvest deploy trigger failed (non-fatal)"
