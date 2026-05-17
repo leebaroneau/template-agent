@@ -4,6 +4,28 @@ Blank Coolify-ready template for running Paperclip with Hermes Agent and GBrain.
 
 This repo is intentionally client-neutral. It should contain the deploy recipe only. Paperclip projects, Hermes profiles, GBrain stores, API keys, and client data are created at runtime inside the Coolify volume mounted at `/data`.
 
+## ⚠️ For Agents (Claude, Codex, any LLM editing this repo) — Read First
+
+This is a **template deployed to multiple companies simultaneously** from a single image.
+
+| Deploy | Coolify host | Watches |
+| --- | --- | --- |
+| **ALX Finance** | `https://coolify.alxfinance.com.au` | `ALX-Finance/paperclip-hermes-gbrain` @ `main` |
+| **Leebarone** | `https://coolify.leebarone.dev` | `leebaroneau/paperclip-hermes-gbrain` @ `deploy/leebarone.dev` |
+| **Genvest** | `http://209.38.27.69:8000` | `leebaroneau/paperclip-hermes-gbrain` @ `main` |
+
+All three pull the **same image**: `ghcr.io/leebaroneau/paperclip-hermes-gbrain:latest` (rebuilt by `.github/workflows/build-image.yml` on every push to `main`).
+
+**Rules for any change you propose:**
+
+- A push to a watched branch redeploys **every Coolify watching that branch — simultaneously**. Treat every commit as a multi-tenant change.
+- Per-company customization lives in **Coolify env vars only** (`PAPERCLIP_HOSTNAME`, `HERMES_HOSTNAME`, `PAPERCLIP_API_KEY`, `PAPERCLIP_DEFAULT_COMPANY_ID`, `HERMES_PROFILES`, `PROFILE_SYNC_ENABLED`, …) — **never** introduce per-brand branches or hard-coded brand specifics in `compose.yaml`.
+- Hermes basic-auth hash in `compose.yaml` is shared across all deploys (same plaintext password, hash is irreversible). Rotating it is a single commit on `main` → all three Coolifies pick it up on next deploy.
+- Data volumes are per-Coolify-app (`<app_uuid>_paperclip-data`). Image swaps preserve data; only `docker volume rm` destroys it.
+- When asked "add feature X for one company," gate it behind an env var; do **not** fork or branch the compose.
+
+If you would be tempted to add a feature, env var, or compose section that only one brand needs — **stop and ask the user first.** The unified-branch architecture is deliberate.
+
 ## Shape
 
 ```text
