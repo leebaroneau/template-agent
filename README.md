@@ -103,13 +103,31 @@ After the stack is deployed (locally or via Coolify) and the containers are runn
 
 2. **Create or claim a company.** Each company is its own Paperclip workspace. Set a goal, name a CEO. The default Hermes agent is seeded automatically when profile-sync is enabled — otherwise see "Seed Default Hermes Agent" below.
 
-3. **Mint a board API key.** From inside the container:
+3. **Mint a board API key.**
+
+   > ⚠️ **There is no "API Keys" page in the Paperclip dashboard.** The only way to create a `pcp_board_*` token is via the CLI flow below. You'll need this token for `PAPERCLIP_API_KEY` (and `PAPERCLIP_PROFILE_SYNC_API_KEY` if you enable profile sync).
+
+   **Option A — From inside the running container** (Coolify Terminal, `docker exec`, or your local compose):
 
    ```bash
    docker compose --env-file .env exec paperclip paperclipai auth login --api-base http://127.0.0.1:3100
    ```
 
-   The CLI prints an approval URL. Open it in a browser, sign in with the admin user from step 1, click approve. The CLI then prints a `pcp_board_*` token — **copy it now into a password manager**; the API does not let you retrieve it again later. (You can mint additional keys by repeating this command.)
+   **Option B — Drive the API directly from anywhere** (no container shell needed). The CLI just wraps two HTTP calls:
+
+   ```bash
+   # 1. Create a challenge — note the boardApiToken and approvalUrl in the response.
+   curl -s -X POST https://paperclip.<your-domain>/api/cli-auth/challenges \
+     -H "Content-Type: application/json" \
+     -d '{"command":"manual","clientName":"manual","requestedAccess":"board","requestedCompanyId":null}'
+
+   # 2. Open `approvalUrl` in your browser, sign in as the admin from step 1, click Approve.
+
+   # 3. Poll until the challenge flips to status="approved":
+   curl -s "https://paperclip.<your-domain>/api/cli-auth/challenges/<id>?token=<challenge-token>"
+   ```
+
+   Once approved, the `boardApiToken` from step 1 is your live `pcp_board_*` key. **Copy it now into a password manager — the API does not let you retrieve it again later.** Mint additional keys anytime by repeating either flow.
 
 4. **Set `PAPERCLIP_API_KEY=<pcp_board_…>` in env** (Coolify → app → Environment Variables, or local `.env`). This activates the Paperclip MCP server inside Hermes — without a key, every MCP tool call from Hermes will return 401.
 
