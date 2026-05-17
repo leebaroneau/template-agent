@@ -32,7 +32,11 @@ for file in \
   "scripts/render-coolify-compose.sh" \
   "scripts/validate-env.sh"; do
   check_absent "$file" 'hermes-ui|HERMES_UI' "service should be named hermes"
-  check_absent "$file" 'Lee'\''s|leebarone|haverford|alx-finance|paperclip\.leebarone\.dev|hermes\.leebarone\.dev|HERMES_BRIDGE_TOKEN|SERVICE_FQDN_|SERVICE_URL_|COOLIFY_FQDN' "template should not include live client or deployment values"
+  # \bleebarone\b uses word boundaries so it catches "leebarone" and
+  # "leebarone.dev" but NOT the shared image registry user "leebaroneau"
+  # in `ghcr.io/leebaroneau/paperclip-hermes-gbrain:latest`, which is the
+  # canonical image all three deployments pull from (see README).
+  check_absent "$file" 'Lee'\''s|\bleebarone\b|haverford|alx-finance|paperclip\.leebarone\.dev|hermes\.leebarone\.dev|HERMES_BRIDGE_TOKEN|SERVICE_FQDN_|SERVICE_URL_|COOLIFY_FQDN' "template should not include live client or deployment values"
 done
 
 for expected in \
@@ -46,12 +50,20 @@ for expected in \
   fi
 done
 
-if [[ "$(tr -d '[:space:]' < hermes-runtime/templates/config.yaml)" != "{}" ]]; then
-  echo "hermes-runtime/templates/config.yaml should be an empty YAML map for a blank template." >&2
+# The blank Hermes config now ships with two intentional defaults documented
+# in README ("The blank Hermes config is intentionally empty, with one
+# exception: a Paperclip MCP server is wired in by default"):
+#   - mcp_servers.paperclip  -> Hermes profiles can file Paperclip issues
+#   - memory:*               -> shared memory/profile sizing defaults
+# Guard against OTHER kinds of defaults sneaking in (terminal / dashboard /
+# skills opinions, client-specific creds), and assert the documented MCP
+# default stays declared.
+check_absent "hermes-runtime/templates/config.yaml" 'terminal:|dashboard:|^skills:' "blank Hermes config should not ship runtime-opinion defaults"
+
+if ! grep -nE '^mcp_servers:[[:space:]]*$' hermes-runtime/templates/config.yaml >/dev/null 2>&1; then
+  echo "hermes-runtime/templates/config.yaml should declare the default Paperclip MCP server (see README)." >&2
   failed=1
 fi
-
-check_absent "hermes-runtime/templates/config.yaml" 'mcp_servers:|terminal:|dashboard:|skills:' "blank Hermes config should not ship default settings"
 
 if ! grep -nE 'COPY paperclip/learning-protocol\.md /opt/paperclip/learning-protocol\.md' paperclip/Dockerfile >/dev/null 2>&1; then
   echo "Dockerfile should copy the learning protocol into the image." >&2
