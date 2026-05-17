@@ -46,7 +46,9 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
   && cd "$HERMES_SRC" \
   && git fetch --depth 1 origin "${HERMES_AGENT_REF}" \
   && git checkout FETCH_HEAD \
-  && (uv pip install --python ./venv/bin/python -e ".[all]" || uv pip install --python ./venv/bin/python -e .) \
+  && (uv pip install --python ./venv/bin/python -e ".[all,messaging]" \
+        || uv pip install --python ./venv/bin/python -e ".[all]" \
+        || uv pip install --python ./venv/bin/python -e .) \
   && cd "$HERMES_SRC/web" \
   && npm install \
   && npm run build \
