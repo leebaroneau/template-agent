@@ -402,13 +402,17 @@ export async function reconcileAgents({
   const now = new Date().toISOString();
   const previous = Array.isArray(manifest.managedAgents) ? manifest.managedAgents : [];
   const previousByAgent = new Map(previous.map((entry) => [entry.agentId, entry]));
+  const previousPermissioned = Array.isArray(manifest.permissionedAgents) ? manifest.permissionedAgents : [];
+  const previousPermissionedByAgent = new Map(previousPermissioned.map((entry) => [entry.agentId, entry]));
   const scannedCompanies = new Set();
   const activeAgentIds = new Set();
   const nextEntries = [];
+  const nextPermissionedEntries = [];
   const orgCompanies = [];
   let patched = 0;
   let capabilityPatched = 0;
   let permissioned = 0;
+  let revoked = 0;
   let provisioned = 0;
 
   for (const company of companies) {
@@ -435,16 +439,42 @@ export async function reconcileAgents({
         directReportCount: directReportCounts.get(agent.id) || 0,
       };
 
+      const qualifiesForManagerAssign = shouldGrantManagerAssignment(agent, capabilityContext);
+      const wasPreviouslyPermissioned = previousPermissionedByAgent.has(agent.id);
+
       if (
         grantManagerAssignTasks
         && !retiredAgent
-        && shouldGrantManagerAssignment(agent, capabilityContext)
+        && qualifiesForManagerAssign
         && patchAgentPermissions
       ) {
         const permissionsPayload = managerAssignmentPermissions(agent);
         const permissionsResult = await patchAgentPermissions(agent.id, permissionsPayload);
         agent = mergeAgentPatch(agent, permissionsResult);
         permissioned += 1;
+        nextPermissionedEntries.push({
+          companyId: company.id,
+          agentId: agent.id,
+          grantedAt: previousPermissionedByAgent.get(agent.id)?.grantedAt || now,
+          lastSeenAt: now,
+        });
+      } else if (
+        grantManagerAssignTasks
+        && !retiredAgent
+        && wasPreviouslyPermissioned
+        && !qualifiesForManagerAssign
+        && patchAgentPermissions
+      ) {
+        // Agent was granted canAssignTasks in a prior cycle but no longer
+        // qualifies (lost direct reports, role change, etc.). Revoke so the
+        // template's "managers only" rule stays enforced. Only triggers for
+        // agents we tracked in the manifest — historical grants from before
+        // this tracking shipped are left alone (cleaning them up is a manual
+        // one-shot, not the steady-state reconcile's job).
+        const permissionsPayload = revokeManagerAssignmentPermissions(agent);
+        const permissionsResult = await patchAgentPermissions(agent.id, permissionsPayload);
+        agent = mergeAgentPatch(agent, permissionsResult);
+        revoked += 1;
       }
 
       if (!retiredAgent && !managedAgent) {
@@ -540,12 +570,14 @@ export async function reconcileAgents({
     patched,
     capabilityPatched,
     permissioned,
+    revoked,
     provisioned,
     retired,
     manifest: {
       version: 1,
       updatedAt: now,
       managedAgents: nextEntries,
+      permissionedAgents: nextPermissionedEntries,
     },
   };
 }
@@ -643,6 +675,15 @@ function managerAssignmentPermissions(agent) {
   return {
     canCreateAgents: Boolean(agent?.permissions?.canCreateAgents),
     canAssignTasks: true,
+  };
+}
+
+function revokeManagerAssignmentPermissions(agent) {
+  // Preserve canCreateAgents — only revoke canAssignTasks. Mirrors the grant
+  // payload shape so the API merges cleanly.
+  return {
+    canCreateAgents: Boolean(agent?.permissions?.canCreateAgents),
+    canAssignTasks: false,
   };
 }
 
@@ -792,11 +833,12 @@ function normalizeManifest(manifest) {
     version: 1,
     updatedAt: manifest?.updatedAt || null,
     managedAgents: Array.isArray(manifest?.managedAgents) ? manifest.managedAgents : [],
+    permissionedAgents: Array.isArray(manifest?.permissionedAgents) ? manifest.permissionedAgents : [],
   };
 }
 
 function emptyManifest() {
-  return { version: 1, updatedAt: null, managedAgents: [] };
+  return { version: 1, updatedAt: null, managedAgents: [], permissionedAgents: [] };
 }
 
 function slugPart(value) {
@@ -1164,8 +1206,10 @@ async function runOnceFromEnv() {
     patched: result.patched,
     capabilityPatched: result.capabilityPatched,
     permissioned: result.permissioned,
+    revoked: result.revoked,
     retired: result.retired,
     managedAgents: result.manifest.managedAgents.length,
+    permissionedAgents: result.manifest.permissionedAgents.length,
   }));
 }
 

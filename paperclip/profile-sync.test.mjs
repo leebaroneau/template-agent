@@ -571,6 +571,129 @@ test('reconcileAgents grants task assignment to agents with direct reports', asy
     assert.equal(cto.access.canAssignTasks, true);
     assert.equal(cto.permissions.canCreateAgents, false);
     assert.equal(engineer.directReports, undefined);
+    assert.equal(result.revoked, 0);
+    assert.deepEqual(
+      result.manifest.permissionedAgents.map((e) => e.agentId).sort(),
+      ['ceo_1', 'cto_1'],
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('reconcileAgents revokes task assignment when a previously permissioned agent loses qualification', async () => {
+  const permissionCalls = [];
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-revoke-'));
+  try {
+    // Manifest from a previous cycle: CTO was a manager (had a report). The
+    // report has since left the team, so CTO no longer has direct reports.
+    const previousManifest = {
+      managedAgents: [],
+      permissionedAgents: [
+        {
+          companyId: 'co_1',
+          agentId: 'cto_1',
+          grantedAt: '2026-05-01T00:00:00.000Z',
+          lastSeenAt: '2026-05-01T00:00:00.000Z',
+        },
+      ],
+    };
+
+    const result = await reconcileAgents({
+      companies: [{ id: 'co_1', name: 'Acme, Inc.' }],
+      listAgents: async () => [
+        {
+          id: 'ceo_1',
+          name: 'CEO',
+          role: 'ceo',
+          adapterType: 'process',
+          permissions: { canCreateAgents: true },
+        },
+        {
+          id: 'cto_1',
+          name: 'CTO',
+          role: 'cto',
+          adapterType: 'process',
+          reportsTo: 'ceo_1',
+          permissions: { canCreateAgents: false },
+          // No more direct reports — eng_1 from the prior team is gone.
+        },
+      ],
+      patchAgent: async (agentId, payload) => ({ id: agentId, ...payload }),
+      patchAgentPermissions: async (agentId, payload) => {
+        permissionCalls.push({ agentId, payload });
+        return {
+          id: agentId,
+          permissions: { canCreateAgents: payload.canCreateAgents },
+          access: {
+            canAssignTasks: payload.canAssignTasks,
+            taskAssignSource: payload.canAssignTasks ? 'explicit_grant' : 'none',
+          },
+        };
+      },
+      ensureHomes: async () => {
+        throw new Error('ensureHomes should not be called for process agents');
+      },
+      manifest: previousManifest,
+      paperclipAgentServerUrl: 'http://paperclip:3100',
+      orgMirrorRoot: root,
+    });
+
+    assert.equal(result.revoked, 1, 'CTO should be revoked');
+    assert.equal(result.permissioned, 1, 'CEO is still a manager and should be re-granted');
+
+    const revokeCall = permissionCalls.find((c) => c.agentId === 'cto_1');
+    assert.deepEqual(revokeCall.payload, {
+      canCreateAgents: false,
+      canAssignTasks: false,
+    });
+
+    // CTO should no longer be in the next manifest's permissionedAgents.
+    assert.deepEqual(
+      result.manifest.permissionedAgents.map((e) => e.agentId),
+      ['ceo_1'],
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('reconcileAgents does not revoke historical canAssignTasks from agents absent from the manifest', async () => {
+  const permissionCalls = [];
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-no-historical-revoke-'));
+  try {
+    // Empty manifest — represents the first run after the revoke feature
+    // shipped. The engineer below has a stale grant from before tracking was
+    // added; we must not revoke it.
+    const result = await reconcileAgents({
+      companies: [{ id: 'co_1', name: 'Acme, Inc.' }],
+      listAgents: async () => [
+        {
+          id: 'eng_1',
+          name: 'Engineer',
+          role: 'engineer',
+          adapterType: 'process',
+          permissions: { canCreateAgents: false },
+          // Simulate stale grant on the live agent record:
+          access: { canAssignTasks: true, taskAssignSource: 'explicit_grant' },
+        },
+      ],
+      patchAgent: async (agentId, payload) => ({ id: agentId, ...payload }),
+      patchAgentPermissions: async (agentId, payload) => {
+        permissionCalls.push({ agentId, payload });
+        return { id: agentId, permissions: { canCreateAgents: payload.canCreateAgents } };
+      },
+      ensureHomes: async () => {
+        throw new Error('ensureHomes should not be called for process agents');
+      },
+      manifest: { managedAgents: [], permissionedAgents: [] },
+      paperclipAgentServerUrl: 'http://paperclip:3100',
+      orgMirrorRoot: root,
+    });
+
+    assert.equal(result.revoked, 0, 'engineer not in manifest — must not be revoked');
+    assert.equal(result.permissioned, 0, 'engineer has no direct reports — must not be granted');
+    assert.deepEqual(permissionCalls, [], 'no permission API call at all for this engineer');
   } finally {
     await rm(root, { recursive: true, force: true });
   }
