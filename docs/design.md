@@ -44,7 +44,11 @@ Provide a GitHub-cloneable Paperclip + Hermes + GBrain template that can be depl
    shared file path is unavailable.
 4. `profile-sync` periodically mirrors active Paperclip companies and agents into
    the shared org chart files so delegation can follow the current Paperclip org.
-5. Agents use Paperclip issues as the primary handoff surface, with Hermes Kanban
+5. Active agents with direct reports receive `canAssignTasks` so manager roles
+   can route work to their teams and peer managers without a CEO round trip.
+6. Active agents receive a `Capability Discovery` clause that makes role scope,
+   cross-team manager routing, and escalation behavior explicit.
+7. Agents use Paperclip issues as the primary handoff surface, with Hermes Kanban
    as the durable cross-profile fallback when a deployment enables it.
 
 ## Learning Protocol Flow

@@ -213,8 +213,11 @@ PAPERCLIP_DEFAULT_COMPANY_ID=<uuid>   # optional, single-company convenience
 PROFILE_SYNC_ENABLED=1
 PROFILE_SYNC_INTERVAL_SEC=60
 PROFILE_SYNC_DELETE_MODE=archive
+PROFILE_SYNC_GRANT_MANAGER_ASSIGN_TASKS=1
 PAPERCLIP_PROFILE_SYNC_API_KEY=<pcp_board_...>   # same key as PAPERCLIP_API_KEY is fine
 ```
+
+Profile sync also grants `canAssignTasks` to active agents that have direct reports, preserving their existing `canCreateAgents` setting. Disable with `PROFILE_SYNC_GRANT_MANAGER_ASSIGN_TASKS=0` if a deployment wants CEO-only task assignment.
 
 **Gateway autostart for profiles with messaging credentials:**
 
@@ -611,6 +614,10 @@ patches Paperclip `hermes_local` agents, each agent's `capabilities` field recei
 a short pointer telling it to read the shared protocol and Paperclip org chart
 before accepting, rerouting, creating, commenting on, or completing issues. New
 Hermes profile homes also receive `DELEGATION_PROTOCOL.md` as a fallback copy.
+
+During profile sync, all active Paperclip agents also receive a concise
+`Capability Discovery` clause if they do not already have one. That clause makes
+role ownership and peer-manager routing explicit for cross-team delegation.
 
 To reset a local test install:
 

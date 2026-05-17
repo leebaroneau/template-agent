@@ -414,7 +414,7 @@ test('ensureProfileHomes copies safe default GBrain skill folders without databa
   }
 });
 
-test('reconcileAgents patches only hermes_local agents and records managed entries', async () => {
+test('reconcileAgents patches hermes_local agents, capability discovery, and managed entries', async () => {
   const apiCalls = [];
   const homeCalls = [];
   const root = await mkdtemp(join(tmpdir(), 'profile-sync-org-'));
@@ -465,11 +465,16 @@ test('reconcileAgents patches only hermes_local agents and records managed entri
   });
 
   assert.deepEqual(homeCalls, ['acme-inc-researcher']);
-  assert.equal(apiCalls.length, 1);
-  assert.equal(apiCalls[0].agentId, 'a_1');
-  assert.equal(apiCalls[0].payload.adapterConfig.model, 'gpt-5.5');
-  assert.equal(apiCalls[0].payload.adapterConfig.provider, 'openai-codex');
-  assert.equal(apiCalls[0].payload.metadata.agentStackProfileSlug, 'acme-inc-researcher');
+  assert.equal(apiCalls.length, 2);
+  const researcherPatch = apiCalls.find((call) => call.agentId === 'a_1');
+  const designerPatch = apiCalls.find((call) => call.agentId === 'a_2');
+  assert.equal(researcherPatch.payload.adapterConfig.model, 'gpt-5.5');
+  assert.equal(researcherPatch.payload.adapterConfig.provider, 'openai-codex');
+  assert.equal(researcherPatch.payload.metadata.agentStackProfileSlug, 'acme-inc-researcher');
+  assert.match(researcherPatch.payload.capabilities, /Capability Discovery:/);
+  assert.deepEqual(Object.keys(designerPatch.payload), ['capabilities']);
+  assert.match(designerPatch.payload.capabilities, /Capability Discovery:/);
+  assert.equal(result.capabilityPatched, 1);
   assert.equal(result.manifest.managedAgents.length, 1);
   assert.equal(result.manifest.managedAgents[0].agentId, 'a_1');
   assert.equal(result.manifest.managedAgents[0].profileSlug, 'acme-inc-researcher');
@@ -489,6 +494,142 @@ test('reconcileAgents patches only hermes_local agents and records managed entri
   assert.match(await readFile(join(root, 'org-chart.md'), 'utf8'), /Designer/);
 
   await rm(root, { recursive: true, force: true });
+});
+
+test('reconcileAgents grants task assignment to agents with direct reports', async () => {
+  const permissionCalls = [];
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-permissions-'));
+  try {
+    const result = await reconcileAgents({
+      companies: [{ id: 'co_1', name: 'Acme, Inc.' }],
+      listAgents: async () => [
+        {
+          id: 'ceo_1',
+          name: 'CEO',
+          role: 'ceo',
+          adapterType: 'process',
+          permissions: { canCreateAgents: true },
+        },
+        {
+          id: 'cto_1',
+          name: 'CTO',
+          role: 'cto',
+          title: 'Chief Technology Officer',
+          adapterType: 'process',
+          reportsTo: 'ceo_1',
+          permissions: { canCreateAgents: false },
+        },
+        {
+          id: 'eng_1',
+          name: 'Engineer',
+          role: 'engineer',
+          adapterType: 'process',
+          reportsTo: 'cto_1',
+          permissions: { canCreateAgents: false },
+        },
+      ],
+      patchAgent: async (agentId, payload) => ({ id: agentId, ...payload }),
+      patchAgentPermissions: async (agentId, payload) => {
+        permissionCalls.push({ agentId, payload });
+        return {
+          id: agentId,
+          permissions: { canCreateAgents: payload.canCreateAgents },
+          access: {
+            canAssignTasks: payload.canAssignTasks,
+            taskAssignSource: 'explicit_grant',
+          },
+        };
+      },
+      ensureHomes: async () => {
+        throw new Error('ensureHomes should not be called for process agents');
+      },
+      manifest: { managedAgents: [] },
+      paperclipAgentServerUrl: 'http://paperclip:3100',
+      orgMirrorRoot: root,
+    });
+
+    assert.equal(result.permissioned, 2);
+    assert.deepEqual(permissionCalls, [
+      {
+        agentId: 'ceo_1',
+        payload: { canCreateAgents: true, canAssignTasks: true },
+      },
+      {
+        agentId: 'cto_1',
+        payload: { canCreateAgents: false, canAssignTasks: true },
+      },
+    ]);
+
+    const orgJson = JSON.parse(await readFile(join(root, 'org-chart.json'), 'utf8'));
+    const ceo = orgJson.companies[0].agents.find((agent) => agent.id === 'ceo_1');
+    const cto = orgJson.companies[0].agents.find((agent) => agent.id === 'cto_1');
+    const engineer = orgJson.companies[0].agents.find((agent) => agent.id === 'eng_1');
+    assert.equal(ceo.directReports, 1);
+    assert.equal(ceo.access.canAssignTasks, true);
+    assert.equal(ceo.permissions.canCreateAgents, true);
+    assert.equal(cto.directReports, 1);
+    assert.equal(cto.access.canAssignTasks, true);
+    assert.equal(cto.permissions.canCreateAgents, false);
+    assert.equal(engineer.directReports, undefined);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('reconcileAgents adds capability discovery guidance to existing profiles', async () => {
+  const capabilityPatches = [];
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-capabilities-'));
+  try {
+    await reconcileAgents({
+      companies: [{ id: 'co_1', name: 'Acme, Inc.' }],
+      listAgents: async () => [
+        {
+          id: 'cto_1',
+          name: 'CTO',
+          role: 'cto',
+          title: 'Chief Technology Officer',
+          capabilities: 'Owns engineering and infrastructure.',
+          adapterType: 'hermes_local',
+          adapterConfig: {},
+          permissions: { canCreateAgents: false },
+        },
+        {
+          id: 'cmo_1',
+          name: 'CMO',
+          role: 'cmo',
+          title: 'Chief Marketing Officer',
+          capabilities: 'Owns brand and demand generation.',
+          adapterType: 'process',
+          reportsTo: 'cto_1',
+          permissions: { canCreateAgents: false },
+        },
+      ],
+      patchAgent: async (agentId, payload) => {
+        capabilityPatches.push({ agentId, capabilities: payload.capabilities });
+        return { id: agentId, ...payload };
+      },
+      patchAgentPermissions: async (agentId, payload) => ({
+        id: agentId,
+        permissions: { canCreateAgents: payload.canCreateAgents },
+        access: { canAssignTasks: payload.canAssignTasks },
+      }),
+      ensureHomes: async ({ profileSlug }) => ({ profileSlug }),
+      manifest: { managedAgents: [] },
+      paperclipAgentServerUrl: 'http://paperclip:3100',
+      orgMirrorRoot: root,
+    });
+
+    const ctoPatch = capabilityPatches.find((patch) => patch.agentId === 'cto_1');
+    const cmoPatch = capabilityPatches.find((patch) => patch.agentId === 'cmo_1');
+    assert.match(ctoPatch.capabilities, /Capability Discovery:/);
+    assert.match(ctoPatch.capabilities, /technical implementation/i);
+    assert.match(ctoPatch.capabilities, /peer manager/i);
+    assert.match(cmoPatch.capabilities, /Capability Discovery:/);
+    assert.match(cmoPatch.capabilities, /marketing/i);
+    assert.match(cmoPatch.capabilities, /appropriate peer manager/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('reconcileAgents archives missing managed agents after a successful company scan', async () => {

@@ -21,16 +21,22 @@ of quietly doing another role's job.
 ## 2. Delegate With A Complete Handoff
 
 When a task belongs to another role, create, reassign, or comment on a Paperclip
-issue for the correct owner. If Hermes Kanban is available for the deployment,
-use the Kanban task/comment flow for durable cross-profile work.
+issue for the correct owner. If the destination is another team, assign it to
+that team's manager, not directly to one of the manager's reports. The receiving
+manager owns prioritization, capacity, and any internal delegation. If Hermes
+Kanban is available for the deployment, use the Kanban task/comment flow for
+durable cross-profile work.
 
 Every handoff must include:
 - Original request or issue reference.
+- `parentId` or the original issue link when creating a child task.
 - Why the target owner is the right role.
 - Context needed to start without reading the full prior thread.
 - Expected output.
+- Deadline or expected timing.
 - Constraints, risks, and dependencies.
 - Links or paths to relevant artifacts.
+- Success criteria.
 - Done criteria.
 
 ## 3. Keep The Original Thread Useful
@@ -40,6 +46,8 @@ After delegating, comment on the original issue with:
 - What was handed off.
 - Any blocker or approval needed.
 - Where to follow progress.
+- Any downstream blocker that changes ETA, even when that blocker escalates up
+  the receiving team's reporting line.
 
 If you cannot create or reassign issues because of permissions, leave a clear
 comment asking the CEO/intake/orchestrator role to route it.
@@ -47,8 +55,16 @@ comment asking the CEO/intake/orchestrator role to route it.
 ## 4. Use Role Boundaries
 
 Orchestrator, CEO, and intake-style roles may route broad work across the team.
-Specialist roles should mainly execute work in their domain and delegate work
-outside that domain.
+Managers may assign tasks for their own direct reports and may send cross-team
+work to peer managers. Specialist roles should mainly execute work in their
+domain and delegate work outside that domain.
+
+For common cross-team routing:
+- Technical implementation, deployments, schema, data, security, QA, and
+  engineering investigation go through the CTO or technical manager.
+- Brand, content, copy, campaigns, demand generation, lifecycle, paid media,
+  SEO, CRO, and ecommerce trading go through the CMO or marketing manager.
+- Work outside known manager scopes escalates to the CEO/intake/orchestrator.
 
 Do not create new agents unless your permissions and task explicitly require it.
 Prefer assigning work to an existing appropriate role.

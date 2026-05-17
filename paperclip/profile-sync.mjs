@@ -119,6 +119,7 @@ export function buildManagedAgentPayload({
   hermesDataRoot = '/data/hermes',
   gbrainDataRoot = '/data/gbrain',
   hermesModelConfig,
+  capabilityContext,
 }) {
   const metadata = agent.metadata && typeof agent.metadata === 'object' ? agent.metadata : {};
   const profileSlug = desiredProfileSlug(
@@ -138,8 +139,12 @@ export function buildManagedAgentPayload({
     ? existingConfig.env
     : {};
 
+  const capabilities = capabilityContext
+    ? withCapabilityDiscovery(agent.capabilities, agent, capabilityContext)
+    : normalizedCapabilityText(agent.capabilities);
+
   return {
-    capabilities: withSharedOperatingPointers(agent.capabilities),
+    capabilities: withSharedOperatingPointers(capabilities),
     adapterType: 'hermes_local',
     adapterConfig: {
       ...(hermesModelConfig?.model ? { model: hermesModelConfig.model } : {}),
@@ -188,7 +193,7 @@ function withSharedOperatingPointers(capabilities) {
     next = appendCapabilityPointer(next, DELEGATION_PROTOCOL_POINTER);
   }
 
-  if (!next.includes(ORG_CHART_MARKDOWN_PATH) && !/Org Chart:/i.test(next)) {
+  if (!/Org Chart:/i.test(next)) {
     next = appendCapabilityPointer(next, ORG_CHART_POINTER);
   }
 
@@ -201,6 +206,75 @@ function withSharedOperatingPointers(capabilities) {
 
 function appendCapabilityPointer(capabilities, pointer) {
   return capabilities ? `${capabilities}\n\n${pointer}` : pointer;
+}
+
+function withCapabilityDiscovery(capabilities, agent, context = {}) {
+  let next = normalizedCapabilityText(capabilities);
+  if (/Capability Discovery:/i.test(next)) return next;
+
+  const scope = roleRoutingScope(agent);
+  const directReportCount = Number(context.directReportCount || 0);
+  const managerLine = directReportCount > 0
+    ? `This role has ${directReportCount} direct report${directReportCount === 1 ? '' : 's'} and should use Paperclip task assignment for team routing. Managers with direct reports assign cross-team child tasks to the appropriate peer manager, not directly to that manager's individual reports.`
+    : 'This role should execute in its own scope and delegate work outside that scope to the appropriate peer manager.';
+
+  const guidance = [
+    'Capability Discovery:',
+    `Own and accept ${scope.own}.`,
+    `Route ${scope.routeToThis} through this role.`,
+    `Route work outside this scope by reading ${ORG_CHART_MARKDOWN_PATH} and assigning/commenting to the appropriate peer manager with parent task context, deadline, links, and done criteria.`,
+    managerLine,
+  ].join(' ');
+
+  return appendCapabilityPointer(next, guidance);
+}
+
+function normalizedCapabilityText(capabilities) {
+  return typeof capabilities === 'string' ? capabilities.trim() : '';
+}
+
+function roleRoutingScope(agent) {
+  const haystack = `${agent?.role || ''} ${agent?.name || ''} ${agent?.title || ''}`.toLowerCase();
+
+  if (/\bceo\b|chief executive|orchestrator|intake/.test(haystack)) {
+    return {
+      own: 'company-level prioritization, executive escalation, final routing decisions, and unresolved cross-team blockers',
+      routeToThis: 'ambiguous ownership, budget/prioritization conflicts, hiring approvals, and work outside existing manager scopes',
+    };
+  }
+
+  if (/\bcto\b|chief technology|engineer|engineering|frontend|backend|devops|platform|security|qa|data|analytics|architect|technical|infrastructure|schema|deployment/.test(haystack)) {
+    return {
+      own: 'technical implementation, engineering investigation, infrastructure, data, QA, security, deployments, migrations, and product build work',
+      routeToThis: 'code changes, technical investigations, architecture decisions, deployment work, schema changes, automation, QA, and engineering blockers',
+    };
+  }
+
+  if (/\bcmo\b|chief marketing|marketing|growth|brand|creative|content|seo|paid|media|lifecycle|crm|demand|campaign|ecommerce|commerce|trading|cro|conversion/.test(haystack)) {
+    return {
+      own: 'brand, content, demand generation, lifecycle marketing, paid media, SEO, CRO, ecommerce trading, campaign planning, and commercial growth work',
+      routeToThis: 'campaigns, copy, landing page briefs, content production, paid ad work, lifecycle/CRM, SEO, ecommerce trading, CRO, and marketing blockers',
+    };
+  }
+
+  if (/\bcfo\b|finance|financial|budget|forecast|accounting/.test(haystack)) {
+    return {
+      own: 'finance, forecasting, budget, accounting, unit economics, and commercial analysis work',
+      routeToThis: 'budget reviews, financial models, revenue analysis, cost controls, and finance blockers',
+    };
+  }
+
+  if (/\bpm\b|product|program|project|operations|ops/.test(haystack)) {
+    return {
+      own: 'product coordination, project planning, operational follow-through, requirements, prioritization support, and delivery tracking',
+      routeToThis: 'product requirements, project coordination, delivery planning, backlog grooming, and operational blockers',
+    };
+  }
+
+  return {
+    own: 'the work described by this role title and capabilities',
+    routeToThis: 'tasks that match this role title, capabilities, team, routing keywords, or ownership notes',
+  };
 }
 
 export async function ensureProfileHomes({
@@ -311,6 +385,7 @@ export async function reconcileAgents({
   companies,
   listAgents,
   patchAgent,
+  patchAgentPermissions,
   ensureHomes = ensureProfileHomes,
   retireHomes = retireProfileHomes,
   writeOrgMirror = writeOrgMirrorFiles,
@@ -322,6 +397,7 @@ export async function reconcileAgents({
   templateDir = DEFAULT_TEMPLATE_DIR,
   orgMirrorRoot = DEFAULT_ORG_MIRROR_ROOT,
   initGbrain = true,
+  grantManagerAssignTasks = true,
 }) {
   const now = new Date().toISOString();
   const previous = Array.isArray(manifest.managedAgents) ? manifest.managedAgents : [];
@@ -331,15 +407,19 @@ export async function reconcileAgents({
   const nextEntries = [];
   const orgCompanies = [];
   let patched = 0;
+  let capabilityPatched = 0;
+  let permissioned = 0;
   let provisioned = 0;
 
   for (const company of companies) {
     scannedCompanies.add(company.id);
     const agents = await listAgents(company.id);
     const companyName = company.name || company.shortName || company.id;
+    const activeAgents = agents.filter((agent) => !isRetiredAgent(agent));
+    const directReportCounts = countDirectReports(activeAgents);
     const orgAgents = [];
 
-    for (const agent of agents) {
+    for (let agent of agents) {
       const managedAgent = shouldManageAgent(agent);
       const retiredAgent = isRetiredAgent(agent);
       const previousEntry = previousByAgent.get(agent.id);
@@ -350,52 +430,79 @@ export async function reconcileAgents({
       const profileSlug = managedAgent && !retiredAgent
         ? desiredProfileSlug(companyName, agent.name, existingSlug)
         : existingSlug;
+      const capabilityContext = {
+        companyName,
+        directReportCount: directReportCounts.get(agent.id) || 0,
+      };
 
-      if (!retiredAgent) {
-        orgAgents.push(normalizeOrgAgent(agent, { profileSlug }));
+      if (
+        grantManagerAssignTasks
+        && !retiredAgent
+        && shouldGrantManagerAssignment(agent, capabilityContext)
+        && patchAgentPermissions
+      ) {
+        const permissionsPayload = managerAssignmentPermissions(agent);
+        const permissionsResult = await patchAgentPermissions(agent.id, permissionsPayload);
+        agent = mergeAgentPatch(agent, permissionsResult);
+        permissioned += 1;
       }
 
-      if (!managedAgent) continue;
-      if (retiredAgent) continue;
+      if (!retiredAgent && !managedAgent) {
+        const discoveryCapabilities = withCapabilityDiscovery(agent.capabilities, agent, capabilityContext);
+        if (discoveryCapabilities !== normalizedCapabilityText(agent.capabilities)) {
+          const capabilityResult = await patchAgent(agent.id, { capabilities: discoveryCapabilities });
+          agent = mergeAgentPatch(agent, capabilityResult);
+          capabilityPatched += 1;
+          patched += 1;
+        }
+      }
 
-      const homes = await ensureHomes({
-        profileSlug,
-        hermesDataRoot,
-        gbrainDataRoot,
-        templateDir,
-        initGbrain,
-      });
-      provisioned += 1;
+      if (managedAgent && !retiredAgent) {
+        const homes = await ensureHomes({
+          profileSlug,
+          hermesDataRoot,
+          gbrainDataRoot,
+          templateDir,
+          initGbrain,
+        });
+        provisioned += 1;
 
-      const payload = buildManagedAgentPayload({
-        agent: {
-          ...agent,
-          metadata: {
-            ...(agent.metadata || {}),
-            agentStackProfileSlug: profileSlug,
+        const payload = buildManagedAgentPayload({
+          agent: {
+            ...agent,
+            metadata: {
+              ...(agent.metadata || {}),
+              agentStackProfileSlug: profileSlug,
+            },
           },
-        },
-        companyName,
-        paperclipAgentServerUrl,
-        hermesDataRoot,
-        gbrainDataRoot,
-        hermesModelConfig: homes.modelConfig,
-      });
-      await patchAgent(agent.id, payload);
-      patched += 1;
+          companyName,
+          paperclipAgentServerUrl,
+          hermesDataRoot,
+          gbrainDataRoot,
+          hermesModelConfig: homes.modelConfig,
+          capabilityContext,
+        });
+        const managedResult = await patchAgent(agent.id, payload);
+        agent = mergeAgentPatch(agent, managedResult || payload);
+        patched += 1;
 
-      activeAgentIds.add(agent.id);
-      nextEntries.push({
-        companyId: company.id,
-        companyName,
-        agentId: agent.id,
-        agentName: agent.name,
-        profileSlug,
-        hermesHome: homes.hermesHome || payload.metadata.agentStackHermesHome,
-        gbrainHome: homes.gbrainHome || payload.metadata.agentStackGbrainHome,
-        createdAt: previousEntry?.createdAt || now,
-        lastSeenAt: now,
-      });
+        activeAgentIds.add(agent.id);
+        nextEntries.push({
+          companyId: company.id,
+          companyName,
+          agentId: agent.id,
+          agentName: agent.name,
+          profileSlug,
+          hermesHome: homes.hermesHome || payload.metadata.agentStackHermesHome,
+          gbrainHome: homes.gbrainHome || payload.metadata.agentStackGbrainHome,
+          createdAt: previousEntry?.createdAt || now,
+          lastSeenAt: now,
+        });
+      }
+
+      if (!retiredAgent) {
+        orgAgents.push(normalizeOrgAgent(agent, { profileSlug, directReportCount: capabilityContext.directReportCount }));
+      }
     }
 
     orgCompanies.push(compactObject({
@@ -431,6 +538,8 @@ export async function reconcileAgents({
 
   return {
     patched,
+    capabilityPatched,
+    permissioned,
     provisioned,
     retired,
     manifest: {
@@ -465,7 +574,7 @@ async function atomicWriteFile(destination, content) {
   await rename(tmpPath, destination);
 }
 
-function normalizeOrgAgent(agent, { profileSlug } = {}) {
+function normalizeOrgAgent(agent, { profileSlug, directReportCount = 0 } = {}) {
   const metadata = agent.metadata && typeof agent.metadata === 'object' ? agent.metadata : {};
   return compactObject({
     id: agent.id,
@@ -474,6 +583,7 @@ function normalizeOrgAgent(agent, { profileSlug } = {}) {
     title: agent.title,
     adapterType: agent.adapterType,
     profileSlug,
+    directReports: directReportCount > 0 ? directReportCount : undefined,
     team: firstNonEmpty(agent.team, agent.department, metadata.team, metadata.department),
     reportsTo: firstNonEmpty(
       agent.reportsTo,
@@ -492,7 +602,78 @@ function normalizeOrgAgent(agent, { profileSlug } = {}) {
       metadata.routingKeywords,
       metadata.keywords,
     )),
+    permissions: normalizePermissions(agent.permissions),
+    access: normalizeAccess(agent.access),
     capabilities: agent.capabilities,
+  });
+}
+
+function countDirectReports(agents) {
+  const activeIds = new Set(agents.map((agent) => agent.id).filter(Boolean));
+  const counts = new Map();
+
+  for (const agent of agents) {
+    const reportsTo = agentReportsTo(agent);
+    if (!reportsTo || !activeIds.has(reportsTo)) continue;
+    counts.set(reportsTo, (counts.get(reportsTo) || 0) + 1);
+  }
+
+  return counts;
+}
+
+function agentReportsTo(agent) {
+  const metadata = agent?.metadata && typeof agent.metadata === 'object' ? agent.metadata : {};
+  return firstNonEmpty(
+    agent?.reportsTo,
+    agent?.reportsToAgentId,
+    agent?.managerAgentId,
+    agent?.managerId,
+    metadata.reportsTo,
+    metadata.reportsToAgentId,
+    metadata.managerAgentId,
+    metadata.managerId,
+  );
+}
+
+function shouldGrantManagerAssignment(agent, context) {
+  return Boolean(agent?.id && Number(context?.directReportCount || 0) > 0);
+}
+
+function managerAssignmentPermissions(agent) {
+  return {
+    canCreateAgents: Boolean(agent?.permissions?.canCreateAgents),
+    canAssignTasks: true,
+  };
+}
+
+function mergeAgentPatch(agent, patch) {
+  if (!patch || typeof patch !== 'object') return agent;
+  return {
+    ...agent,
+    ...patch,
+    metadata: {
+      ...(agent.metadata || {}),
+      ...(patch.metadata || {}),
+    },
+    adapterConfig: {
+      ...(agent.adapterConfig || {}),
+      ...(patch.adapterConfig || {}),
+    },
+  };
+}
+
+function normalizePermissions(permissions) {
+  if (!permissions || typeof permissions !== 'object') return undefined;
+  return compactObject({
+    canCreateAgents: typeof permissions.canCreateAgents === 'boolean' ? permissions.canCreateAgents : undefined,
+  });
+}
+
+function normalizeAccess(access) {
+  if (!access || typeof access !== 'object') return undefined;
+  return compactObject({
+    canAssignTasks: typeof access.canAssignTasks === 'boolean' ? access.canAssignTasks : undefined,
+    taskAssignSource: access.taskAssignSource,
   });
 }
 
@@ -521,8 +702,12 @@ function renderOrgChartMarkdown(orgChart) {
       appendMarkdownDetail(lines, 'role', agent.role);
       appendMarkdownDetail(lines, 'adapter', agent.adapterType);
       appendMarkdownDetail(lines, 'profile', agent.profileSlug);
+      appendMarkdownDetail(lines, 'direct reports', agent.directReports);
       appendMarkdownDetail(lines, 'team', agent.team);
       appendMarkdownDetail(lines, 'reports to', agent.reportsTo);
+      appendMarkdownDetail(lines, 'can assign tasks', agent.access?.canAssignTasks);
+      appendMarkdownDetail(lines, 'task assign source', agent.access?.taskAssignSource);
+      appendMarkdownDetail(lines, 'can create agents', agent.permissions?.canCreateAgents);
       appendMarkdownDetail(lines, 'owns', agent.owns?.join(', '));
       appendMarkdownDetail(lines, 'routing keywords', agent.routingKeywords?.join(', '));
       appendMarkdownDetail(lines, 'capabilities', agent.capabilities);
@@ -535,7 +720,7 @@ function renderOrgChartMarkdown(orgChart) {
 }
 
 function appendMarkdownDetail(lines, label, value) {
-  if (!value) return;
+  if (value === undefined || value === null || value === '') return;
   lines.push(`  - ${label}: ${String(value).replace(/\s+/g, ' ').trim()}`);
 }
 
@@ -960,6 +1145,7 @@ async function runOnceFromEnv() {
     companies,
     listAgents: async (companyId) => extractArray(await api('GET', `/api/companies/${companyId}/agents`)),
     patchAgent: async (agentId, payload) => await api('PATCH', `/api/agents/${agentId}`, payload),
+    patchAgentPermissions: async (agentId, payload) => await api('PATCH', `/api/agents/${agentId}/permissions`, payload),
     manifest,
     deleteMode: envValue('PROFILE_SYNC_DELETE_MODE', 'archive'),
     paperclipAgentServerUrl: envValue('PAPERCLIP_AGENT_API_URL', DEFAULT_AGENT_API_URL),
@@ -968,6 +1154,7 @@ async function runOnceFromEnv() {
     templateDir: envValue('PROFILE_SYNC_TEMPLATE_DIR', DEFAULT_TEMPLATE_DIR),
     orgMirrorRoot: envValue('ORG_MIRROR_ROOT', DEFAULT_ORG_MIRROR_ROOT),
     initGbrain: !envBool('PROFILE_SYNC_SKIP_GBRAIN_INIT', false),
+    grantManagerAssignTasks: envBool('PROFILE_SYNC_GRANT_MANAGER_ASSIGN_TASKS', true),
   });
 
   await writeManifest(result.manifest, manifestPath);
@@ -975,6 +1162,8 @@ async function runOnceFromEnv() {
     companies: companies.length,
     provisioned: result.provisioned,
     patched: result.patched,
+    capabilityPatched: result.capabilityPatched,
+    permissioned: result.permissioned,
     retired: result.retired,
     managedAgents: result.manifest.managedAgents.length,
   }));
