@@ -48,6 +48,27 @@ install_gbrain_skills() {
   done
 }
 
+install_hermes_bundled_skills() {
+  local profile_home="$1"
+  local src="${HERMES_BUNDLED_SKILLS_SOURCE:-/usr/local/lib/hermes-agent/skills}"
+
+  if [[ ! -d "$src" ]]; then
+    return 0
+  fi
+
+  mkdir -p "$profile_home/skills"
+  for skill_dir in "$src"/*; do
+    [[ -d "$skill_dir" ]] || continue
+    local name
+    name="$(basename "$skill_dir")"
+    # Skip if a non-symlink already exists (Hermes lazy-installed or user-modified)
+    if [[ -e "$profile_home/skills/$name" && ! -L "$profile_home/skills/$name" ]]; then
+      continue
+    fi
+    ln -sfn "$skill_dir" "$profile_home/skills/$name"
+  done
+}
+
 # Symlink agent-stack-shipped skills (e.g. using-paperclip) into every
 # Hermes profile's skills/agent-stack/ directory. Mirrors install_gbrain_skills
 # pattern. Source dir is baked into the image at /opt/hermes-runtime/skills/.
@@ -166,6 +187,7 @@ for raw_profile in "${profiles[@]}"; do
 
   write_env_file "$profile_home/.env"
   install_gbrain_skills "$profile_home"
+  install_hermes_bundled_skills "$profile_home"
   install_agent_stack_skills "$profile_home"
 
   if [[ ! -f "$gbrain_home/.gbrain/config.json" ]]; then
