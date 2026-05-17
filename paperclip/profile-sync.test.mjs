@@ -165,7 +165,15 @@ test('ensureProfileHomes creates profile config, soul, and gbrain directory', as
 
     assert.equal(result.hermesHome, join(root, 'hermes/profiles/acme-researcher'));
     assert.equal(result.gbrainHome, join(root, 'gbrain/acme-researcher'));
-    assert.equal(await readFile(join(result.hermesHome, 'config.yaml'), 'utf8'), '{}\n');
+    // Assert the rendered config.yaml is a faithful copy of the template that
+    // ships in-repo. Pinning to the template content (rather than a static
+    // '{}\n') stays correct as upstream adds MCP server / memory defaults to
+    // the template, while still catching copy regressions.
+    const templateConfig = await readFile(
+      join(process.cwd(), 'hermes-runtime/templates/config.yaml'),
+      'utf8',
+    );
+    assert.equal(await readFile(join(result.hermesHome, 'config.yaml'), 'utf8'), templateConfig);
     assert.match(await readFile(join(result.hermesHome, 'SOUL.md'), 'utf8'), /Hermes/);
     assert.match(
       await readFile(join(result.hermesHome, 'DELEGATION_PROTOCOL.md'), 'utf8'),
