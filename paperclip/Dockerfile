@@ -82,6 +82,7 @@ COPY paperclip/patch-hermes-adapter-skills-home.mjs /opt/paperclip/patch-hermes-
 COPY paperclip/patch-paperclip-company-prefix.mjs /opt/paperclip/patch-paperclip-company-prefix.mjs
 COPY paperclip/patch-paperclip-hermes-defaults.mjs /opt/paperclip/patch-paperclip-hermes-defaults.mjs
 COPY paperclip/profile-sync.mjs /opt/paperclip/profile-sync.mjs
+COPY paperclip/narrow-grants.mjs /opt/paperclip/narrow-grants.mjs
 COPY paperclip/mcp-paperclip /opt/paperclip/mcp-paperclip
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     cd /opt/paperclip/mcp-paperclip \
