@@ -85,7 +85,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.middlewares.gzip.compress=true
-      - traefik.http.middlewares.hermes-auth.basicauth.users=admin:$2y$05$CQwH/hYpd1Ke70aH1QOmD.HN645xZLHdl1yhR9xyYL5uhGqSOiQf2
+      - traefik.http.middlewares.hermes-auth.basicauth.users=admin:$$2y$$05$$CQwH/hYpd1Ke70aH1QOmD.HN645xZLHdl1yhR9xyYL5uhGqSOiQf2
       - traefik.http.routers.hermes.entryPoints=http
       - traefik.http.routers.hermes.middlewares=gzip,hermes-auth
       - traefik.http.routers.hermes.rule=Host(`${HERMES_HOSTNAME:-hermes.example.com}`)

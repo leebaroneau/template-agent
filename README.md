@@ -431,12 +431,14 @@ TOOL_ACCESS_DEFAULT_PRESET=agent-stack-hermes-default
 
 Re-running is safe. The script creates missing tools and presets only, and it applies the default preset only when an active `hermes_local` agent does not already have the matching grants. On Paperclip builds without the tool access API it logs a skip and makes no changes.
 
+Company selection follows the same scope as profile sync: leave `PAPERCLIP_COMPANY_IDS` blank to seed every accessible company, or set a comma-separated list such as `PAPERCLIP_COMPANY_IDS=co_123,co_456`.
+
 Manual run:
 
 ```bash
 PAPERCLIP_API_BASE=http://localhost:3100 \
 PAPERCLIP_API_KEY=<pcp_board_...> \
-PAPERCLIP_COMPANY_ID=<company-uuid> \
+PAPERCLIP_COMPANY_IDS=<company-uuid> \
 node paperclip/seed-tool-access.mjs
 ```
 

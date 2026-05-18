@@ -101,6 +101,7 @@ export const DEFAULT_TOOL_ACCESS_PRESETS = Object.freeze([
     ],
   },
 ]);
+const DEFAULT_TOOL_ACCESS_PRESETS_BY_KEY = new Map(DEFAULT_TOOL_ACCESS_PRESETS.map((preset) => [preset.key, preset]));
 
 export async function seedToolAccessForCompanies({
   api,
@@ -138,7 +139,7 @@ export async function seedToolAccessForCompany({
       log,
     });
   } catch (error) {
-    if (String(error?.message || error).includes(' 404:')) {
+    if (isNotFoundError(error)) {
       log(`[agent-stack] tool access API unavailable for ${companyId}; skipping seed`);
       return { companyId, skipped: true, createdTools: 0, createdPresets: 0, appliedPresets: 0 };
     }
@@ -151,6 +152,7 @@ async function seedToolAccessForCompanyStrict({
   companyId,
   applyDefaultPreset,
   defaultPresetKey,
+  log = () => {},
 }) {
   let matrix = await api('GET', `/api/companies/${companyId}/tools`);
   const existingToolsByKey = new Map(extractArray(matrix.tools ?? matrix).map((tool) => [tool.key, tool]));
@@ -177,19 +179,25 @@ async function seedToolAccessForCompanyStrict({
   let appliedPresets = 0;
   if (applyDefaultPreset) {
     matrix = await api('GET', `/api/companies/${companyId}/tools`);
-    const toolsByKey = new Map(extractArray(matrix.tools).map((tool) => [tool.key, tool]));
-    const grants = extractArray(matrix.grants);
+    const toolsByKey = new Map(extractArray(matrix.tools ?? matrix).map((tool) => [tool.key, tool]));
+    const grants = extractArray(matrix.grants ?? []);
     const preset = existingPresetsByKey.get(defaultPresetKey);
     if (preset) {
-      const agents = extractArray(await api('GET', `/api/companies/${companyId}/agents`))
-        .filter((agent) => agent?.adapterType === 'hermes_local' && !isRetiredAgent(agent));
-      for (const agent of agents) {
-        if (presetAlreadyApplied({ agentId: agent.id, preset, toolsByKey, grants })) continue;
-        await api('POST', `/api/companies/${companyId}/tool-presets/apply`, {
-          agentId: agent.id,
-          presetId: preset.id,
-        });
-        appliedPresets += 1;
+      const presetDefinition = DEFAULT_TOOL_ACCESS_PRESETS_BY_KEY.get(defaultPresetKey);
+      const presetGrants = extractArray(preset.grants).length > 0 ? preset.grants : presetDefinition?.grants;
+      if (extractArray(presetGrants).length === 0) {
+        log(`[agent-stack] preset ${defaultPresetKey} has no grants; skipping default preset apply for ${companyId}`);
+      } else {
+        const agents = extractArray(await api('GET', `/api/companies/${companyId}/agents`))
+          .filter((agent) => agent?.adapterType === 'hermes_local' && !isRetiredAgent(agent));
+        for (const agent of agents) {
+          if (presetAlreadyApplied({ agentId: agent.id, presetGrants, toolsByKey, grants })) continue;
+          await api('POST', `/api/companies/${companyId}/tool-presets/apply`, {
+            agentId: agent.id,
+            presetId: preset.id,
+          });
+          appliedPresets += 1;
+        }
       }
     }
   }
@@ -197,13 +205,19 @@ async function seedToolAccessForCompanyStrict({
   return { companyId, skipped: false, createdTools, createdPresets, appliedPresets };
 }
 
-function presetAlreadyApplied({ agentId, preset, toolsByKey, grants }) {
-  return extractArray(preset.grants).every((grant) => {
+function presetAlreadyApplied({ agentId, presetGrants, toolsByKey, grants }) {
+  return extractArray(presetGrants).every((grant) => {
     const tool = toolsByKey.get(grant.toolKey);
-    if (!tool) return true;
+    if (!tool) return false;
     const existing = grants.find((row) => row.agentId === agentId && row.toolId === tool.id);
     return (existing?.mode || 'off') === grant.mode;
   });
+}
+
+function isNotFoundError(error) {
+  const status = Number(error?.status ?? error?.statusCode ?? error?.response?.status);
+  if (status === 404) return true;
+  return /\b404\b/.test(String(error?.message || error));
 }
 
 function isRetiredAgent(agent) {
@@ -255,7 +269,9 @@ function makeApiClient({ apiBase, apiKey }) {
     });
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`${method} ${path} failed with ${response.status}: ${text}`);
+      const error = new Error(`${method} ${path} failed with ${response.status}: ${text}`);
+      error.status = response.status;
+      throw error;
     }
     if (response.status === 204) return null;
     return await response.json();
