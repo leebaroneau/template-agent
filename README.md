@@ -19,7 +19,7 @@ All three production deploys pull the **same image**: `ghcr.io/leebaroneau/templ
 **Rules for any change you propose:**
 
 - A push to a watched branch redeploys **every Coolify watching that branch — simultaneously**. Treat every commit as a multi-tenant change.
-- PR previews are isolated by image tag. The image workflow publishes `pr-<number>` and `sha-<commit>` tags for pull requests, while `main` alone publishes `latest` and `paperclip-<version>`.
+- PR previews are isolated by commit image tag. The image workflow does not run automatically on pull requests; dispatch it manually on the PR branch to publish `sha-<commit>`. Main branch image builds publish `latest`, `paperclip-<version>`, and `sha-<commit>`.
 - Per-company customization lives in **Coolify env vars only** (`PAPERCLIP_HOSTNAME`, `HERMES_HOSTNAME`, `PAPERCLIP_API_KEY`, `PAPERCLIP_DEFAULT_COMPANY_ID`, `HERMES_PROFILES`, `PROFILE_SYNC_ENABLED`, …) — **never** introduce per-brand branches or hard-coded brand specifics in `compose.yaml`.
 - Hermes basic-auth hash in `compose.yaml` is shared across all deploys (same plaintext password, hash is irreversible). Rotating it is a single commit on `main` → all three Coolifies pick it up on next deploy.
 - Data volumes are per-Coolify-app (`<app_uuid>_paperclip-data`). Image swaps preserve data; only `docker volume rm` destroys it.
@@ -62,18 +62,23 @@ The Paperclip MCP server (see below) closes the loop: Hermes-side agents can fil
 
 ## Image Tags and Preview Deployments
 
-The GitHub image workflow publishes different tags for production and pull requests:
+The GitHub image workflow publishes production images automatically from `main`. Preview images are manual so normal pull requests stay fast:
 
 | Event | Tags |
 |---|---|
-| Push to `main` | `latest`, `paperclip-<version>`, `sha-<commit>` |
-| Pull request | `pr-<number>`, `sha-<commit>` |
+| Push or manual dispatch on `main` | `latest`, `paperclip-<version>`, `sha-<commit>` |
+| Manual dispatch on a non-`main` branch | `sha-<commit>` |
+| Pull request | No image is published automatically |
 
 The workflow publishes to `ghcr.io/leebaroneau/template-agent`, matching the GitHub repository name. Existing Coolify apps should consume this package for both production and preview deployments.
 
-`pr-<number>` is stable for the lifetime of one PR: PR #17 publishes `pr-17`, PR #18 publishes `pr-18`, and every new push to that PR overwrites the same PR tag.
+Main branch image builds always publish the full multi-arch `linux/amd64,linux/arm64` image. Manual branch builds default to `linux/arm64` for local Coolify previews on Colima. Choose `linux/amd64,linux/arm64` manually only when a branch preview needs production parity.
 
-Pull request image builds publish the same multi-arch `linux/amd64,linux/arm64` image as `main`, because local Coolify preview deployments may run on Colima ARM64 while hosted runners and production hosts may be AMD64.
+To publish a preview image for a branch, dispatch the workflow against that branch:
+
+```bash
+gh workflow run build-image.yml --ref <branch> -f platforms=linux/arm64
+```
 
 For Coolify preview deployments, prefer the commit tag so one generic preview variable works for every PR:
 
@@ -81,11 +86,11 @@ For Coolify preview deployments, prefer the commit tag so one generic preview va
 AGENT_STACK_IMAGE=ghcr.io/leebaroneau/template-agent:sha-$SOURCE_COMMIT
 ```
 
-Set that as a **Preview Deployment Environment Variable** in Coolify with variable interpolation enabled (do not mark it literal). Coolify provides `SOURCE_COMMIT` for each deployment, so PR #17 and PR #18 automatically pull their own image without manually changing `AGENT_STACK_IMAGE`.
+Set that as a **Preview Deployment Environment Variable** in Coolify with variable interpolation enabled (do not mark it literal). Coolify provides `SOURCE_COMMIT` for each deployment, so PR #17 and PR #18 pull their own image without manually changing `AGENT_STACK_IMAGE`. If a PR gets new commits, dispatch the image workflow again before redeploying that preview.
 
 Paperclip adopts Coolify's preview `SERVICE_URL_PAPERCLIP` and `SERVICE_FQDN_PAPERCLIP` at container start for PR previews, so preview hostnames are added to `PAPERCLIP_ALLOWED_HOSTNAMES` automatically. For Cloudflare Universal SSL, use one-label preview hostnames like `paperclip-pr-17.example.com`; nested names like `17.paperclip.example.com` usually require an additional wildcard certificate.
 
-Do not use a shared tag like `:pr` unless you intentionally only ever run one PR preview at a time. A single shared PR tag would be overwritten by whichever PR built last.
+Do not use a shared tag like `:pr` unless you intentionally only ever run one PR preview at a time. A single shared PR tag would be overwritten by whichever branch built last.
 
 ## Paperclip Version
 
@@ -251,7 +256,7 @@ The default `force=false` lets Coolify skip a deploy if it thinks the app is alr
 To force every Coolify to recreate regardless of its skip check, run:
 
 ```bash
-gh workflow run build-image.yml -f force=true
+gh workflow run build-image.yml --ref main -f force=true
 ```
 
 This is a `workflow_dispatch` trigger that passes `force=true` through to all three Coolify deploy URLs. The image rebuild is cache-hot (~1–2 min); the Coolify recreates fire on completion.
@@ -260,7 +265,7 @@ This is a `workflow_dispatch` trigger that passes `force=true` through to all th
 
 ```bash
 ssh <host> docker pull ghcr.io/leebaroneau/template-agent:latest
-gh workflow run build-image.yml -f force=true
+gh workflow run build-image.yml --ref main -f force=true
 ```
 
 The durable fix is configuring each Coolify app's image-pull-policy to "Always" (UI: app → Configuration → Image Pull Policy). Then `force=true` alone is sufficient.

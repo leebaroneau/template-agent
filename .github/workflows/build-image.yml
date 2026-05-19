@@ -9,17 +9,16 @@ on:
       - hermes-runtime/**
       - compose.yaml
       - .github/workflows/build-image.yml
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - paperclip/Dockerfile
-      - paperclip/**
-      - hermes-runtime/**
-      - compose.yaml
-      - .github/workflows/build-image.yml
   workflow_dispatch:
     inputs:
+      platforms:
+        description: 'Image platforms to build. Use linux/arm64 for local Coolify PR previews; use linux/amd64,linux/arm64 for production parity.'
+        type: choice
+        default: linux/arm64
+        options:
+          - linux/arm64
+          - linux/amd64
+          - linux/amd64,linux/arm64
       force:
         description: 'Pass force=true to the Coolify deploy webhooks (overrides Coolify''s skip-if-no-change check). Use this to recover from a build/pull race where Coolify deployed an older :latest digest than what GHCR now has.'
         type: boolean
@@ -61,7 +60,11 @@ jobs:
 
       - name: Select image platforms
         run: |
-          echo "IMAGE_PLATFORMS=linux/amd64,linux/arm64" >> "$GITHUB_ENV"
+          platforms="${{ inputs.platforms || 'linux/arm64' }}"
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            platforms="linux/amd64,linux/arm64"
+          fi
+          echo "IMAGE_PLATFORMS=$platforms" >> "$GITHUB_ENV"
 
       - uses: docker/setup-qemu-action@v4
         with:
@@ -80,11 +83,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable=${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
-            type=raw,value=paperclip-${{ steps.paperclip_version.outputs.version }},enable=${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
-            type=raw,value=sha-${{ github.sha }},enable=${{ github.event_name != 'pull_request' }}
-            type=raw,value=pr-${{ github.event.pull_request.number }},enable=${{ github.event_name == 'pull_request' }}
-            type=raw,value=sha-${{ github.event.pull_request.head.sha }},enable=${{ github.event_name == 'pull_request' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=paperclip-${{ steps.paperclip_version.outputs.version }},enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=sha-${{ github.sha }}
 
       - uses: docker/build-push-action@v7
         with:
@@ -99,7 +100,7 @@ jobs:
           provenance: false
 
       - name: Trigger ALX Coolify deploy
-        if: success() && github.event_name != 'pull_request' && vars.COOLIFY_ALX_BASE_URL != '' && vars.COOLIFY_ALX_APP_UUID != ''
+        if: success() && github.ref == 'refs/heads/main' && vars.COOLIFY_ALX_BASE_URL != '' && vars.COOLIFY_ALX_APP_UUID != ''
         run: |
           curl -sf -X GET \
             -H "Authorization: Bearer ${{ secrets.COOLIFY_ALX_TOKEN }}" \
@@ -107,7 +108,7 @@ jobs:
             || echo "ALX deploy trigger failed (non-fatal)"
 
       - name: Trigger leebarone Coolify deploy
-        if: success() && github.event_name != 'pull_request' && vars.COOLIFY_LEEBARONE_BASE_URL != '' && vars.COOLIFY_LEEBARONE_APP_UUID != ''
+        if: success() && github.ref == 'refs/heads/main' && vars.COOLIFY_LEEBARONE_BASE_URL != '' && vars.COOLIFY_LEEBARONE_APP_UUID != ''
         run: |
           curl -sf -X GET \
             -H "Authorization: Bearer ${{ secrets.COOLIFY_LEEBARONE_TOKEN }}" \
@@ -115,7 +116,7 @@ jobs:
             || echo "leebarone deploy trigger failed (non-fatal)"
 
       - name: Trigger Genvest Coolify deploy
-        if: success() && github.event_name != 'pull_request' && vars.COOLIFY_GENVEST_BASE_URL != '' && vars.COOLIFY_GENVEST_APP_UUID != ''
+        if: success() && github.ref == 'refs/heads/main' && vars.COOLIFY_GENVEST_BASE_URL != '' && vars.COOLIFY_GENVEST_APP_UUID != ''
         run: |
           curl -sf -X GET \
             -H "Authorization: Bearer ${{ secrets.COOLIFY_GENVEST_TOKEN }}" \
