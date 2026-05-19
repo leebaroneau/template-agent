@@ -20,3 +20,11 @@ test('workflow and compose defaults publish and pull the template-agent image pa
   assert.match(compose, /ghcr\.io\/leebaroneau\/template-agent:latest/);
   assert.doesNotMatch(compose, /ghcr\.io\/leebaroneau\/paperclip-hermes-gbrain:latest/);
 });
+
+test('multi-arch image publish has enough timeout and non-blocking cache export', async () => {
+  const workflow = await readFile('.github/workflows/build-image.yml', 'utf8');
+
+  assert.match(workflow, /timeout-minutes: 90/);
+  assert.match(workflow, /cache-to: type=gha,mode=min,ignore-error=true/);
+  assert.doesNotMatch(workflow, /cache-to: type=gha,mode=max\s*$/m);
+});
