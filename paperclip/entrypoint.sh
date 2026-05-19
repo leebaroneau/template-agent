@@ -64,10 +64,8 @@ fi
 runuser -u node -- env HERMES_HOME="$HERMES_HOME" GBRAIN_HOME="$GBRAIN_HOME" hermes --version
 runuser -u node -- env HERMES_HOME="$HERMES_HOME" GBRAIN_HOME="$GBRAIN_HOME" gbrain --version
 
-eval "$(node /opt/paperclip/patch-paperclip-hermes-defaults.mjs env)"
 node /opt/paperclip/patch-hermes-adapter-env.mjs
 node /opt/paperclip/patch-hermes-adapter-skills-home.mjs
-node /opt/paperclip/patch-paperclip-hermes-defaults.mjs patch
 node /opt/paperclip/patch-paperclip-company-prefix.mjs
 
 if [[ ! -f /data/instances/default/config.json ]]; then

@@ -15,7 +15,7 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 import { seedToolAccessForCompanies } from './seed-tool-access.mjs';
@@ -113,6 +113,25 @@ export function desiredProfileSlug(companyName, profileName, existingSlug) {
   return `${combined.slice(0, 87).replace(/-+$/g, '')}-${digest}`;
 }
 
+function runtimeIdentityMetadata(metadata) {
+  const value = metadata?.runtimeIdentity;
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function runtimeIdentityProfileSlug(metadata) {
+  const value = runtimeIdentityMetadata(metadata).profileSlug;
+  return typeof value === 'string' && isSafeSlug(value) ? value : undefined;
+}
+
+function runtimeIdentityHermesHome(metadata, hermesDataRoot = '/data/hermes') {
+  const value = runtimeIdentityMetadata(metadata).hermesHome;
+  if (typeof value !== 'string') return undefined;
+
+  const trimmed = value.trim();
+  if (!trimmed || !isAbsolute(trimmed)) return undefined;
+  return isManagedHermesHome(trimmed, hermesDataRoot) ? resolve(trimmed) : undefined;
+}
+
 export function buildManagedAgentPayload({
   agent,
   companyName,
@@ -123,15 +142,16 @@ export function buildManagedAgentPayload({
   capabilityContext,
 }) {
   const metadata = agent.metadata && typeof agent.metadata === 'object' ? agent.metadata : {};
+  const runtimeProfileSlug = runtimeIdentityProfileSlug(metadata);
   const profileSlug = desiredProfileSlug(
     companyName,
     metadata.profileName || metadata.hermesProfileName || agent.name,
-    metadata.agentStackProfileSlug || metadata.hermesProfile,
+    runtimeProfileSlug || metadata.agentStackProfileSlug || metadata.hermesProfile,
   );
   assertSafeSlug(profileSlug);
 
   const paperclipServerUrl = withoutApiSuffix(paperclipAgentServerUrl);
-  const hermesHome = join(hermesDataRoot, 'profiles', profileSlug);
+  const hermesHome = runtimeIdentityHermesHome(metadata, hermesDataRoot) || join(hermesDataRoot, 'profiles', profileSlug);
   const gbrainHome = join(gbrainDataRoot, profileSlug);
   const existingConfig = agent.adapterConfig && typeof agent.adapterConfig === 'object'
     ? agent.adapterConfig
@@ -285,12 +305,15 @@ export async function ensureProfileHomes({
   templateDir = DEFAULT_TEMPLATE_DIR,
   configSourcePath,
   initGbrain = true,
+  hermesHome: explicitHermesHome,
 }) {
   assertSafeSlug(profileSlug);
 
-  const hermesHome = profileSlug === 'default'
-    ? hermesDataRoot
-    : join(hermesDataRoot, 'profiles', profileSlug);
+  const hermesHome = explicitHermesHome
+    ? assertManagedHermesHome(explicitHermesHome, 'hermesHome', hermesDataRoot, profileSlug)
+    : (profileSlug === 'default'
+      ? hermesDataRoot
+      : join(hermesDataRoot, 'profiles', profileSlug));
   const gbrainHome = join(gbrainDataRoot, profileSlug);
 
   await mkdir(hermesHome, { recursive: true });
@@ -428,9 +451,13 @@ export async function reconcileAgents({
       const managedAgent = shouldManageAgent(agent);
       const retiredAgent = isRetiredAgent(agent);
       const previousEntry = previousByAgent.get(agent.id);
-      const existingSlug = previousEntry?.profileSlug
-        || agent.metadata?.agentStackProfileSlug
-        || agent.metadata?.hermesProfile;
+      const metadata = agent.metadata && typeof agent.metadata === 'object' ? agent.metadata : {};
+      const runtimeProfileSlug = runtimeIdentityProfileSlug(metadata);
+      const runtimeHermesHome = runtimeIdentityHermesHome(metadata, hermesDataRoot);
+      const existingSlug = runtimeProfileSlug
+        || previousEntry?.profileSlug
+        || metadata.agentStackProfileSlug
+        || metadata.hermesProfile;
 
       const profileSlug = managedAgent && !retiredAgent
         ? desiredProfileSlug(companyName, agent.name, existingSlug)
@@ -492,6 +519,7 @@ export async function reconcileAgents({
       if (managedAgent && !retiredAgent) {
         const homes = await ensureHomes({
           profileSlug,
+          hermesHome: runtimeHermesHome,
           hermesDataRoot,
           gbrainDataRoot,
           templateDir,
@@ -503,7 +531,7 @@ export async function reconcileAgents({
           agent: {
             ...agent,
             metadata: {
-              ...(agent.metadata || {}),
+              ...metadata,
               agentStackProfileSlug: profileSlug,
             },
           },
@@ -879,6 +907,37 @@ function assertSafeSlug(slug) {
   if (!isSafeSlug(slug)) {
     throw new Error(`Unsafe profile slug: ${slug}`);
   }
+}
+
+function assertAbsolutePath(value, label) {
+  if (!isAbsolute(value)) {
+    throw new Error(`${label} must be an absolute path`);
+  }
+  return value;
+}
+
+function managedHermesHomeRoots(hermesDataRoot) {
+  const root = resolve(hermesDataRoot);
+  return [
+    resolve(root, 'profiles'),
+    resolve(dirname(root), 'instances'),
+  ];
+}
+
+function isManagedHermesHome(value, hermesDataRoot) {
+  const resolved = resolve(value);
+  return managedHermesHomeRoots(hermesDataRoot).some((root) => {
+    const pathFromRoot = relative(root, resolved);
+    return pathFromRoot && !pathFromRoot.startsWith('..') && !isAbsolute(pathFromRoot);
+  });
+}
+
+function assertManagedHermesHome(value, label, hermesDataRoot, profileSlug) {
+  assertAbsolutePath(value, label);
+  if (profileSlug === 'default' && resolve(value) === resolve(hermesDataRoot)) return value;
+  if (isManagedHermesHome(value, hermesDataRoot)) return value;
+
+  throw new Error(`${label} must be within ${managedHermesHomeRoots(hermesDataRoot).join(' or ')}`);
 }
 
 function withoutApiSuffix(url) {

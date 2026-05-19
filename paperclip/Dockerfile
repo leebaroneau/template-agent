@@ -2,6 +2,8 @@
 FROM node:22-bookworm-slim
 
 ARG PAPERCLIP_VERSION=2026.513.0
+ARG PAPERCLIP_GIT_REPO=https://github.com/paperclipai/paperclip.git
+ARG PAPERCLIP_GIT_REF=refs/pull/6243/head
 ARG HERMES_AGENT_REF=v2026.5.16
 ARG GBRAIN_REF=eval-run-v0.35.1.0-baseline
 
@@ -66,7 +68,22 @@ RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked \
   && bun install --production
 
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-    npm install -g "paperclipai@${PAPERCLIP_VERSION}"
+    --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
+    if [ -n "${PAPERCLIP_GIT_REF}" ]; then \
+      git clone --filter=blob:none "${PAPERCLIP_GIT_REPO}" /tmp/paperclip-src \
+      && cd /tmp/paperclip-src \
+      && git fetch --depth 1 origin "${PAPERCLIP_GIT_REF}" \
+      && git checkout FETCH_HEAD \
+      && npm install -g pnpm@9.15.4 \
+      && pnpm install --frozen-lockfile \
+      && pnpm build:npm -- --skip-checks --skip-typecheck \
+      && npm pack ./cli --pack-destination /tmp \
+      && npm install -g /tmp/paperclipai-*.tgz \
+      && npm uninstall -g pnpm \
+      && rm -rf /tmp/paperclip-src /tmp/paperclipai-*.tgz; \
+    else \
+      npm install -g "paperclipai@${PAPERCLIP_VERSION}"; \
+    fi
 
 COPY hermes-runtime/scripts /opt/hermes-runtime/scripts
 COPY hermes-runtime/templates /opt/hermes-runtime/templates
@@ -80,7 +97,6 @@ COPY paperclip/hermes-entrypoint.sh /opt/paperclip/hermes-entrypoint.sh
 COPY paperclip/patch-hermes-adapter-env.mjs /opt/paperclip/patch-hermes-adapter-env.mjs
 COPY paperclip/patch-hermes-adapter-skills-home.mjs /opt/paperclip/patch-hermes-adapter-skills-home.mjs
 COPY paperclip/patch-paperclip-company-prefix.mjs /opt/paperclip/patch-paperclip-company-prefix.mjs
-COPY paperclip/patch-paperclip-hermes-defaults.mjs /opt/paperclip/patch-paperclip-hermes-defaults.mjs
 COPY paperclip/profile-sync.mjs /opt/paperclip/profile-sync.mjs
 COPY paperclip/seed-tool-access.mjs /opt/paperclip/seed-tool-access.mjs
 COPY paperclip/narrow-grants.mjs /opt/paperclip/narrow-grants.mjs

@@ -75,6 +75,24 @@ if ! grep -nE 'COPY paperclip/important-information-index\.md /opt/paperclip/imp
   failed=1
 fi
 
+check_absent "paperclip/Dockerfile" 'patch-paperclip-hermes-defaults' "Paperclip PR1 owns Hermes runtime identity/model defaults"
+check_absent "paperclip/entrypoint.sh" 'patch-paperclip-hermes-defaults' "Paperclip entrypoint should not run the removed Hermes defaults patch"
+
+if grep -nE 'npm install -g \./cli' paperclip/Dockerfile >/dev/null 2>&1; then
+  echo "Paperclip git builds should install a packed CLI tarball, not a global symlink to the temporary clone." >&2
+  failed=1
+fi
+
+if ! grep -nE 'npm pack \./cli' paperclip/Dockerfile >/dev/null 2>&1; then
+  echo "Paperclip git builds should pack ./cli before global install so the binary survives /tmp cleanup." >&2
+  failed=1
+fi
+
+if ! grep -nE 'npm uninstall -g pnpm' paperclip/Dockerfile >/dev/null 2>&1; then
+  echo "Paperclip git builds should uninstall build-only pnpm before the final image layer." >&2
+  failed=1
+fi
+
 if ! grep -nE '/data/agent-stack/learning-protocol\.md' paperclip/entrypoint.sh >/dev/null 2>&1; then
   echo "Paperclip entrypoint should mirror the learning protocol into /data." >&2
   failed=1

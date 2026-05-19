@@ -61,9 +61,11 @@ The Paperclip MCP server (see below) closes the loop: Hermes-side agents can fil
 
 ## Paperclip Version
 
-The image installs the published npm package selected by the `PAPERCLIP_VERSION` Docker build arg. Keep this on the normal release path and bump it after Paperclip publishes the runtime identity and tool access work.
+This draft template branch builds Paperclip from `PAPERCLIP_GIT_REPO` / `PAPERCLIP_GIT_REF`, currently `paperclipai/paperclip` PR #6243. That stacked PR includes the runtime identity and tool access API work from PRs #6230, #6242, and #6243.
 
-The tool access seed below is safe to ship before those Paperclip APIs exist: on older Paperclip builds it receives a 404, logs a skip, and leaves the stack unchanged. Avoid branch-building Paperclip directly inside this template unless you also re-verify the runtime patches, because the template currently patches the published npm package layout at container start.
+Do not clear `PAPERCLIP_GIT_REF` on this branch until those Paperclip changes have shipped in the published `paperclipai` package; the removed Hermes defaults patch is now owned by PR #6230. To return this template to the normal release path after publish, build with `PAPERCLIP_GIT_REF=` and bump the `PAPERCLIP_VERSION` Docker build arg. `profile-sync.mjs` now adopts Paperclip's `metadata.runtimeIdentity.profileSlug` and `metadata.runtimeIdentity.hermesHome` when present, then falls back to its legacy `/data/hermes/profiles/<company-role>` layout for older Paperclip builds.
+
+The tool access seed below is safe to run before those Paperclip APIs exist: on older Paperclip builds it receives a 404, logs a skip, and leaves the stack unchanged.
 
 ## /data Volume Layout
 
@@ -73,6 +75,7 @@ Everything persistent lives under `/data`, mounted from the `paperclip-data` Doc
 |---|---|
 | `/data/paperclip.db` | Paperclip's SQLite database (companies, agents, issues, approvals, runs) |
 | `/data/instances/<company-slug>/` | Per-company project files, plan documents, attachments |
+| `/data/instances/<company-slug>/runtimes/hermes/profiles/<runtime-id>/` | Paperclip-owned Hermes runtime identity profile homes, adopted by profile-sync when present |
 | `/data/hermes/` | Default Hermes profile (config, skills, kanban, memory) |
 | `/data/hermes/profiles/<company-role>/` | Per-agent isolated Hermes profile (auto-created by profile-sync) |
 | `/data/hermes/archive/` | Archived profiles for terminated agents (`PROFILE_SYNC_DELETE_MODE=archive`) |
@@ -381,19 +384,19 @@ To add your own agent-stack-wide skills, drop a `SKILL.md` (with optional `refer
 
 ## Runtime Patches
 
-The `paperclip` container's entrypoint runs four small Node patches against Paperclip's bundled npm package before starting the server. These rewrite a few lines in place each boot so the agent stack behaves correctly:
+The `paperclip` container's entrypoint runs three small Node patches against Paperclip's bundled npm package before starting the server. These rewrite a few lines in place each boot so the agent stack behaves correctly:
 
 | Patch | What it changes |
 |---|---|
-| `patch-paperclip-hermes-defaults.mjs` | When Paperclip creates a `hermes_local` agent, inject `HERMES_MODEL` / `HERMES_PROVIDER` defaults from the Hermes profile config so newly-hired agents don't fall back to the bundled adapter's hardcoded Anthropic model. |
 | `patch-hermes-adapter-env.mjs` | Unwrap Paperclip's env-binding objects when passing to the Hermes child process. Without this, `HERMES_HOME`, `GBRAIN_HOME`, and `PAPERCLIP_API_URL` reach Hermes as objects instead of strings. |
 | `patch-hermes-adapter-skills-home.mjs` | Rewrite `hermes-paperclip-adapter`'s `listSkills` so it scans `<HERMES_HOME>/skills/` (instead of always `$HOME/.hermes/skills/`) and follows symlinks at both the category and item levels. Without this, every per-role profile that profile-sync creates reports 0 skills in Paperclip's UI/API even though Hermes itself loads them fine. |
 | `patch-paperclip-company-prefix.mjs` | Relax Paperclip's company URL-key prefix constraints to allow the slugs the agent stack uses. |
 
-All four are idempotent and re-applied on every container start. The tool access seed does not replace these patches; keep them until the matching behavior has shipped upstream and the patch tests prove they are no longer needed. If you upgrade Paperclip (`PAPERCLIP_VERSION` build arg), re-run the patch tests:
+Paperclip PR #6230 owns Hermes runtime identity and model defaults, so this template no longer ships `patch-paperclip-hermes-defaults.mjs`.
+
+The remaining three patches are idempotent and re-applied on every container start. The tool access seed does not replace these patches; keep them until the matching behavior has shipped upstream and the patch tests prove they are no longer needed. If you upgrade Paperclip (`PAPERCLIP_VERSION` build arg) or change `PAPERCLIP_GIT_REF`, re-run the patch tests:
 
 ```bash
-node paperclip/patch-paperclip-hermes-defaults.test.mjs
 node paperclip/patch-hermes-adapter-env.test.mjs
 node paperclip/patch-hermes-adapter-skills-home.test.mjs
 node paperclip/patch-paperclip-company-prefix.test.mjs

@@ -54,6 +54,81 @@ test('buildManagedAgentPayload isolates Hermes and GBrain for one profile', () =
   assert.equal(payload.metadata.managedBy, 'agent-stack profile-sync.mjs');
 });
 
+test('buildManagedAgentPayload adopts Paperclip runtime identity Hermes home', () => {
+  const payload = buildManagedAgentPayload({
+    agent: {
+      name: 'Researcher',
+      adapterConfig: {
+        env: {
+          KEEP_ME: '1',
+        },
+      },
+      metadata: {
+        runtimeIdentity: {
+          profileSlug: 'paperclip-runtime-researcher',
+          hermesHome: '/data/instances/default/runtimes/hermes/profiles/paperclip-runtime-researcher',
+        },
+      },
+    },
+    companyName: 'Acme',
+  });
+
+  assert.equal(
+    payload.adapterConfig.env.HERMES_HOME,
+    '/data/instances/default/runtimes/hermes/profiles/paperclip-runtime-researcher',
+  );
+  assert.equal(payload.adapterConfig.env.GBRAIN_HOME, '/data/gbrain/paperclip-runtime-researcher');
+  assert.equal(payload.adapterConfig.env.KEEP_ME, '1');
+  assert.equal(payload.metadata.agentStackProfileSlug, 'paperclip-runtime-researcher');
+  assert.equal(
+    payload.metadata.agentStackHermesHome,
+    '/data/instances/default/runtimes/hermes/profiles/paperclip-runtime-researcher',
+  );
+  assert.equal(payload.metadata.runtimeIdentity.profileSlug, 'paperclip-runtime-researcher');
+});
+
+test('buildManagedAgentPayload ignores runtime identity Hermes homes outside managed roots', () => {
+  const payload = buildManagedAgentPayload({
+    agent: {
+      name: 'Researcher',
+      metadata: {
+        runtimeIdentity: {
+          profileSlug: 'paperclip-runtime-researcher',
+          hermesHome: '/etc',
+        },
+      },
+    },
+    companyName: 'Acme',
+  });
+
+  assert.equal(payload.adapterConfig.env.HERMES_HOME, '/data/hermes/profiles/paperclip-runtime-researcher');
+  assert.equal(payload.metadata.agentStackHermesHome, '/data/hermes/profiles/paperclip-runtime-researcher');
+});
+
+test('buildManagedAgentPayload normalizes accepted runtime identity Hermes homes', () => {
+  const payload = buildManagedAgentPayload({
+    agent: {
+      name: 'Researcher',
+      metadata: {
+        runtimeIdentity: {
+          profileSlug: 'paperclip-runtime-researcher',
+          hermesHome: '/data/instances/default/../default/runtimes/hermes/profiles/paperclip-runtime-researcher/',
+        },
+      },
+    },
+    companyName: 'Acme',
+  });
+
+  assert.equal(
+    payload.adapterConfig.env.HERMES_HOME,
+    '/data/instances/default/runtimes/hermes/profiles/paperclip-runtime-researcher',
+  );
+  assert.equal(
+    payload.metadata.agentStackHermesHome,
+    '/data/instances/default/runtimes/hermes/profiles/paperclip-runtime-researcher',
+  );
+});
+
 test('buildManagedAgentPayload removes unsupported mcp toolset from existing configs', () => {
   const payload = buildManagedAgentPayload({
     agent: {
@@ -347,6 +422,44 @@ test('ensureProfileHomes pre-creates well-known subdirs for the default profile 
   }
 });
 
+test('ensureProfileHomes rejects explicit Hermes homes outside managed roots', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-hermes-home-guard-'));
+  try {
+    await assert.rejects(
+      ensureProfileHomes({
+        profileSlug: 'acme-researcher',
+        hermesHome: '/etc',
+        hermesDataRoot: join(root, 'hermes'),
+        gbrainDataRoot: join(root, 'gbrain'),
+        templateDir: join(process.cwd(), 'hermes-runtime/templates'),
+        initGbrain: false,
+      }),
+      /hermesHome must be within/,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('ensureProfileHomes rejects explicit Hermes homes at a managed root boundary', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-hermes-home-boundary-'));
+  try {
+    await assert.rejects(
+      ensureProfileHomes({
+        profileSlug: 'acme-researcher',
+        hermesHome: join(root, 'hermes', 'profiles'),
+        hermesDataRoot: join(root, 'hermes'),
+        gbrainDataRoot: join(root, 'gbrain'),
+        templateDir: join(process.cwd(), 'hermes-runtime/templates'),
+        initGbrain: false,
+      }),
+      /hermesHome must be within/,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('ensureProfileHomes restores broken perms on Hermes well-known subdirs (self-heal)', async () => {
   const root = await mkdtemp(join(tmpdir(), 'profile-sync-prewarm-heal-'));
   try {
@@ -494,6 +607,74 @@ test('reconcileAgents patches hermes_local agents, capability discovery, and man
   assert.match(await readFile(join(root, 'org-chart.md'), 'utf8'), /Designer/);
 
   await rm(root, { recursive: true, force: true });
+});
+
+test('reconcileAgents provisions Paperclip runtime identity Hermes homes when present', async () => {
+  const homeCalls = [];
+  const patchCalls = [];
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-runtime-identity-'));
+  try {
+    const result = await reconcileAgents({
+      companies: [{ id: 'co_1', name: 'Acme, Inc.' }],
+      listAgents: async () => [
+        {
+          id: 'a_1',
+          name: 'Researcher',
+          adapterType: 'hermes_local',
+          adapterConfig: {},
+          metadata: {
+            runtimeIdentity: {
+              profileSlug: 'paperclip-runtime-researcher',
+              hermesHome: '/data/instances/default/runtimes/hermes/profiles/paperclip-runtime-researcher',
+            },
+          },
+        },
+      ],
+      patchAgent: async (agentId, payload) => {
+        patchCalls.push({ agentId, payload });
+        return { id: agentId, ...payload };
+      },
+      ensureHomes: async (input) => {
+        homeCalls.push(input);
+        return {
+          hermesHome: input.hermesHome,
+          gbrainHome: join(root, 'gbrain', input.profileSlug),
+          modelConfig: {},
+        };
+      },
+      manifest: {
+        managedAgents: [
+          {
+            companyId: 'co_1',
+            agentId: 'a_1',
+            profileSlug: 'legacy-acme-researcher',
+            hermesHome: '/data/hermes/profiles/legacy-acme-researcher',
+          },
+        ],
+      },
+      orgMirrorRoot: root,
+    });
+
+    assert.equal(homeCalls.length, 1);
+    assert.equal(homeCalls[0].profileSlug, 'paperclip-runtime-researcher');
+    assert.equal(
+      homeCalls[0].hermesHome,
+      '/data/instances/default/runtimes/hermes/profiles/paperclip-runtime-researcher',
+    );
+    assert.equal(patchCalls.length, 1);
+    assert.equal(
+      patchCalls[0].payload.adapterConfig.env.HERMES_HOME,
+      '/data/instances/default/runtimes/hermes/profiles/paperclip-runtime-researcher',
+    );
+    assert.equal(patchCalls[0].payload.adapterConfig.env.GBRAIN_HOME, '/data/gbrain/paperclip-runtime-researcher');
+    assert.equal(result.manifest.managedAgents[0].profileSlug, 'paperclip-runtime-researcher');
+    assert.equal(
+      result.manifest.managedAgents[0].hermesHome,
+      '/data/instances/default/runtimes/hermes/profiles/paperclip-runtime-researcher',
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('reconcileAgents grants task assignment to agents with direct reports', async () => {
