@@ -1,0 +1,16 @@
+# .github/workflows/pipeline-pr-closed.yml
+name: Pipeline — pr-closed
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  pr-closed:
+    uses: leebaroneau/pipeline-core/.github/workflows/pr-closed.yml@v1
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    with:
+      config-path: .github/pipeline-config.yml

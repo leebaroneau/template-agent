@@ -1,0 +1,17 @@
+# .github/workflows/pipeline-issue-link.yml
+name: Pipeline — issue-link
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  issue-link:
+    uses: leebaroneau/pipeline-core/.github/workflows/issue-link.yml@v1
+    permissions:
+      contents: read
+      statuses: write
+      pull-requests: write
+      issues: read
+    with:
+      config-path: .github/pipeline-config.yml

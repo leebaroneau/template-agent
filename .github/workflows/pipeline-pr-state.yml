@@ -1,0 +1,16 @@
+# .github/workflows/pipeline-pr-state.yml
+name: Pipeline — pr-state
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  pr-state:
+    uses: leebaroneau/pipeline-core/.github/workflows/pr-state.yml@v1
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    with:
+      config-path: .github/pipeline-config.yml

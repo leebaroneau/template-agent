@@ -1,0 +1,26 @@
+# .github/workflows/pipeline-drift-scan.yml
+name: Pipeline — drift-scan
+
+on:
+  pull_request:
+    paths:
+      - '.github/pipeline-config.yml'
+      - '.github/labels.yml'
+      - '.github/labeler.yml'
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'README.md'
+      - '00_resources/pipeline-core/README.md'
+    types: [opened, synchronize]
+  schedule:
+    - cron: '0 8 * * 1'    # Monday 08:00 UTC
+  workflow_dispatch:
+
+jobs:
+  drift-scan:
+    uses: leebaroneau/pipeline-core/.github/workflows/drift-scan.yml@v1
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    with:
+      config-path: .github/pipeline-config.yml

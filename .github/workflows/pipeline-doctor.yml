@@ -1,0 +1,29 @@
+# .github/workflows/pipeline-doctor.yml
+#
+# Caller for pipeline-core's reusable doctor workflow. Runs on a weekly schedule
+# and on workflow_dispatch. The doctor is non-mutating: it validates config,
+# diffs generated artifacts, checks caller-workflow pins, and probes branch
+# protection. Failures fail the job; warnings (e.g. plan-gated 403) do not.
+
+name: Pipeline — doctor
+
+on:
+  schedule:
+    # Weekly Monday 09:00 UTC by default; consumers can edit freely.
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+jobs:
+  doctor:
+    uses: leebaroneau/pipeline-core/.github/workflows/doctor.yml@v1
+    permissions:
+      contents: read
+      # Only used when `post-sticky: true` (below). If you leave post-sticky off,
+      # you can drop this line — the doctor's read-only checks need no write scope.
+      issues: write
+    with:
+      config-path: .github/pipeline-config.yml
+      branch: main
+      # Set to "true" to have scheduled runs post into a long-running tracker
+      # issue marked with `<!-- pipeline:doctor-tracker -->`.
+      post-sticky: "false"

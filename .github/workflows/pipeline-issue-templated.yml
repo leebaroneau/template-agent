@@ -1,0 +1,14 @@
+# .github/workflows/pipeline-issue-templated.yml
+name: Pipeline — issue-templated
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  issue-templated:
+    uses: leebaroneau/pipeline-core/.github/workflows/issue-templated.yml@v1
+    permissions:
+      issues: write
+    with:
+      config-path: .github/pipeline-config.yml

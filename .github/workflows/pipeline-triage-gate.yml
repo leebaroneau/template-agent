@@ -1,0 +1,15 @@
+# .github/workflows/pipeline-triage-gate.yml
+name: Pipeline — triage-gate
+
+on:
+  issues:
+    types: [opened, labeled, unlabeled]
+
+jobs:
+  triage-gate:
+    uses: leebaroneau/pipeline-core/.github/workflows/triage-gate.yml@v1
+    permissions:
+      contents: read
+      issues: write
+    with:
+      config-path: .github/pipeline-config.yml

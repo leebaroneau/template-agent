@@ -1,0 +1,18 @@
+# .github/workflows/pipeline-results-gate.yml
+name: Pipeline — results-gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, edited]
+  issues:
+    types: [edited]
+
+jobs:
+  results-gate:
+    uses: leebaroneau/pipeline-core/.github/workflows/results-gate.yml@v1
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    with:
+      config-path: .github/pipeline-config.yml

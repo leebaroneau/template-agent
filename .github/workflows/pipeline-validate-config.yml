@@ -1,0 +1,25 @@
+# .github/workflows/pipeline-validate-config.yml
+name: Pipeline — validate-config
+
+on:
+  pull_request:
+    paths:
+      - ".github/pipeline-config.yml"
+      - ".github/labels.yml"
+      - ".github/labeler.yml"
+      - ".github/ISSUE_TEMPLATE/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/pipeline-config.yml"
+      - ".github/labels.yml"
+      - ".github/labeler.yml"
+      - ".github/ISSUE_TEMPLATE/**"
+
+jobs:
+  validate-config:
+    uses: leebaroneau/pipeline-core/.github/workflows/validate-config.yml@v1
+    permissions:
+      contents: read
+    with:
+      config-path: .github/pipeline-config.yml

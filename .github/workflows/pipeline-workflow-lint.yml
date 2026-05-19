@@ -1,0 +1,18 @@
+# .github/workflows/pipeline-workflow-lint.yml
+name: Pipeline — workflow-lint
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/pipeline-*.yml'
+      - '.github/pipeline-config.yml'
+    types: [opened, synchronize]
+
+jobs:
+  workflow-lint:
+    uses: leebaroneau/pipeline-core/.github/workflows/workflow-lint.yml@v1
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      config-path: .github/pipeline-config.yml

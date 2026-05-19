@@ -1,0 +1,19 @@
+# .github/workflows/pipeline-labels-sync.yml
+name: Pipeline — labels-sync
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/labels.yml"
+  workflow_dispatch:
+
+jobs:
+  labels-sync:
+    uses: leebaroneau/pipeline-core/.github/workflows/labels-sync.yml@v1
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    with:
+      config-path: .github/pipeline-config.yml

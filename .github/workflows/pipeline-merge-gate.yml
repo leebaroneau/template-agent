@@ -1,0 +1,24 @@
+# .github/workflows/pipeline-merge-gate.yml
+name: Pipeline — merge-gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, edited]
+  pull_request_review:
+    types: [submitted, dismissed]
+  issues:
+    types: [edited, labeled, unlabeled]
+  issue_comment:
+    types: [created]
+
+jobs:
+  merge-gate:
+    uses: leebaroneau/pipeline-core/.github/workflows/merge-gate.yml@v1
+    permissions:
+      contents: read
+      statuses: write
+      pull-requests: write
+      issues: read
+      checks: read
+    with:
+      config-path: .github/pipeline-config.yml

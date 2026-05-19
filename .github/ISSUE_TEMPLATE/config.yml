@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discuss before opening an issue
+    url: https://github.com/leebaroneau/lee-dashboard/discussions
+    about: For open-ended questions, use Discussions. Open an issue only when you have a hypothesis or a reproducible bug.

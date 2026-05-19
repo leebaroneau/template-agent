@@ -1,0 +1,16 @@
+# .github/workflows/pipeline-comment-commands.yml
+name: Pipeline — comment-commands
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  comment-commands:
+    uses: leebaroneau/pipeline-core/.github/workflows/comment-commands.yml@v1
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    with:
+      config-path: .github/pipeline-config.yml

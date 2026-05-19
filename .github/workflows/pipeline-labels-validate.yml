@@ -1,0 +1,18 @@
+# .github/workflows/pipeline-labels-validate.yml
+name: Pipeline — labels-validate
+
+on:
+  issues:
+    types: [labeled]
+  pull_request_target:
+    types: [labeled]
+
+jobs:
+  labels-validate:
+    uses: leebaroneau/pipeline-core/.github/workflows/labels-validate.yml@v1
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    with:
+      config-path: .github/pipeline-config.yml

@@ -1,0 +1,16 @@
+# .github/workflows/pipeline-branch-name.yml
+name: Pipeline — branch-name
+
+on:
+  pull_request:
+    types: [opened, synchronize, edited]
+
+jobs:
+  branch-name:
+    uses: leebaroneau/pipeline-core/.github/workflows/branch-name.yml@v1
+    permissions:
+      contents: read
+      statuses: write
+      pull-requests: write
+    with:
+      config-path: .github/pipeline-config.yml
