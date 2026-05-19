@@ -12,5 +12,4 @@ jobs:
       contents: read
       pull-requests: write
     with:
-      config-path: .github/pipeline-config.yml
       labeler-config: .github/labeler.yml
