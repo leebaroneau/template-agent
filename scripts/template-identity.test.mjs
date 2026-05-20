@@ -31,13 +31,12 @@ async function gitLsFiles() {
 test('template no longer references the legacy project image identity', async () => {
   const forbidden = [
     { pattern: ['paperclip', 'hermes', 'gbrain'].join('-'), label: 'legacy project name' },
-    { pattern: ['ghcr', 'io'].join('.'), label: 'GHCR registry' },
     { pattern: ['AGENT', 'STACK', 'IMAGE'].join('_'), label: 'old registry image override' },
   ];
   const files = (await gitLsFiles()).filter((file) => file !== 'scripts/template-identity.test.mjs');
   const failures = [];
 
-  assert.equal(files.includes('.github/workflows/build-image.yml'), false);
+  assert.equal(files.includes('.github/workflows/build-image.yml'), true);
 
   for (const file of files) {
     const text = await readFile(join(repoRoot, file), 'utf8');
@@ -51,11 +50,18 @@ test('template no longer references the legacy project image identity', async ()
   assert.deepEqual(failures, []);
 });
 
-test('compose builds the template-agent image from this repository', async () => {
+test('compose pulls the audited template-agent image by default for Coolify', async () => {
   const compose = await readFile(join(repoRoot, 'compose.yaml'), 'utf8');
+
+  assert.doesNotMatch(compose, /build:/);
+  assert.match(compose, /image:\s*\$\{TEMPLATE_AGENT_IMAGE:-ghcr\.io\/leebaroneau\/template-agent:latest\}/);
+  assert.match(compose, /pull_policy:\s*always/);
+});
+
+test('local build override builds the template-agent image from this repository', async () => {
+  const compose = await readFile(join(repoRoot, 'compose.build.yaml'), 'utf8');
   const buildBlocks = compose.match(/build:\s*\n\s+context:\s*\.\s*\n\s+dockerfile:\s*paperclip\/Dockerfile/g) ?? [];
 
-  assert.doesNotMatch(compose, /pull_policy:\s*always/);
   assert.match(compose, /image:\s*\$\{TEMPLATE_AGENT_IMAGE:-template-agent:local\}/);
   assert.equal(buildBlocks.length, 1);
   assert.match(compose, /pull_policy:\s*build/);

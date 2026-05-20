@@ -1,10 +1,7 @@
 services:
   paperclip:
-    image: ${TEMPLATE_AGENT_IMAGE:-template-agent:local}
-    build:
-      context: .
-      dockerfile: paperclip/Dockerfile
-    pull_policy: build
+    image: ${TEMPLATE_AGENT_IMAGE:-ghcr.io/leebaroneau/template-agent:latest}
+    pull_policy: always
     environment:
       PAPERCLIP_HOME: /data
       PAPERCLIP_TELEMETRY_DISABLED: ${PAPERCLIP_TELEMETRY_DISABLED:-1}
@@ -52,8 +49,8 @@ services:
     restart: unless-stopped
 
   hermes:
-    image: ${TEMPLATE_AGENT_IMAGE:-template-agent:local}
-    pull_policy: never
+    image: ${TEMPLATE_AGENT_IMAGE:-ghcr.io/leebaroneau/template-agent:latest}
+    pull_policy: always
     entrypoint: ["/usr/bin/tini", "--", "/opt/paperclip/hermes-entrypoint.sh"]
     environment:
       HERMES_DATA_ROOT: /data/hermes

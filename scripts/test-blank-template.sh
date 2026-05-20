@@ -38,6 +38,7 @@ for file in \
   "paperclip/Dockerfile" \
   "paperclip/entrypoint.sh" \
   "paperclip/hermes-entrypoint.sh" \
+  ".github/workflows/build-image.yml" \
   "hermes-runtime/templates/SOUL.default.md" \
   "scripts/coolify-env.sh" \
   "scripts/local-up.sh" \
@@ -45,7 +46,7 @@ for file in \
   "scripts/validate-env.sh"; do
   check_absent "$file" 'hermes-ui|HERMES_UI' "service should be named hermes"
   check_absent "$file" 'Lee'\''s|\bleebarone\b|haverford|alx-finance|paperclip\.leebarone\.dev|hermes\.leebarone\.dev|HERMES_BRIDGE_TOKEN|SERVICE_FQDN_|SERVICE_URL_|COOLIFY_FQDN' "template should not include live client or deployment values"
-  check_absent "$file" 'ghcr\.io|AGENT_STACK_''IMAGE|paperclip-hermes-''gbrain' "template should build locally as template-agent, not pull the legacy registry image"
+  check_absent "$file" 'AGENT_STACK_''IMAGE|paperclip-hermes-''gbrain' "template should not reference legacy registry image identity"
 done
 
 for expected in \

@@ -14,7 +14,7 @@ This is a **template deployed to multiple companies simultaneously** from source
 | **Leebarone** | `https://coolify.leebarone.dev` | `leebaroneau/template-agent` @ `main` |
 | **Genvest** | `http://209.38.27.69:8000` | `leebaroneau/template-agent` @ `main` |
 
-Each Coolify server builds the image from this repository with the Docker Compose build pack. The GitHub repo no longer publishes or pulls a registry image for normal deployments.
+Production Coolify deploys should pull a prebuilt image from GitHub Container Registry. GitHub Actions builds and audits the image first, then publishes immutable tags such as `ghcr.io/leebaroneau/template-agent:sha-<commit>`. Local development still builds from source by adding `compose.build.yaml`.
 
 **Rules for any change you propose:**
 
@@ -185,11 +185,26 @@ After the stack is deployed (locally or via Coolify) and the containers are runn
    ./scripts/render-coolify-compose.sh client.example.com client-agent-stack
    ```
 
-8. **Deploy.** Coolify builds the image on the target server from `compose.yaml` and `paperclip/Dockerfile`. Then follow the First-Run Flow above to mint the API key and activate the MCP server.
+8. **Deploy.** Coolify pulls the image referenced by `TEMPLATE_AGENT_IMAGE` and starts `paperclip` + `hermes` from that already-audited artifact. Then follow the First-Run Flow above to mint the API key and activate the MCP server.
 
 ### Auto-deploy from `main`
 
-Use Coolify's Git integration or deploy webhook for auto-deploys. This repo intentionally does not include a GitHub Actions image-publishing workflow; server-side builds keep deployment work on the server and avoid spending Actions minutes on image builds.
+Use Coolify's Git integration or deploy webhook for deploys, but keep the deployment image-first:
+
+```env
+TEMPLATE_AGENT_IMAGE=ghcr.io/leebaroneau/template-agent:sha-$SOURCE_COMMIT
+```
+
+Leave Coolify's **Literal** toggle off for this variable so `$SOURCE_COMMIT` expands to the commit being deployed. GitHub Actions publishes `sha-<commit>` on every push to `main`. Coolify should not build the Paperclip/Hermes/GBrain image on the production host.
+
+Do not let Coolify auto-deploy a pushed commit before the GitHub image workflow has finished. The safe sequence is:
+
+1. Merge to `main`.
+2. Wait for **Build & push agent stack image** to publish `ghcr.io/leebaroneau/template-agent:sha-<merge-commit>`.
+3. Trigger the Coolify deploy for that commit.
+4. Confirm `https://paperclip.<client-domain>/api/health` returns `{"status":"ok"}` before removing any recovery container or rollback tag.
+
+If you want full automation later, wire Coolify's deploy webhook from the image workflow after the push step, not directly from GitHub's branch push event.
 
 ### Recovering from a stuck deploy
 
@@ -199,7 +214,7 @@ If Coolify skips a deploy or keeps running an older built image, trigger a force
 - New env vars from a fresh PR are missing inside the container.
 - A line you just added to a baked-in file (e.g. `paperclip/profile-sync.mjs`) is not present at `/opt/paperclip/profile-sync.mjs`.
 
-Because this template builds on the server, recovery should be a Coolify rebuild/redeploy, not a registry pull.
+Because production deploys pull prebuilt images, recovery should be a rollback to the previous known-good `ghcr.io/leebaroneau/template-agent:sha-<commit>` tag followed by a Coolify redeploy. Do not force a production-host image rebuild as the first recovery step.
 
 ### Coolify env variable checklist
 
@@ -501,7 +516,7 @@ The script flags every agent that has `access.canAssignTasks=true && access.task
 After a local build, audit the image before publishing or reusing it:
 
 ```bash
-docker compose --env-file .env.example build
+docker compose -f compose.yaml -f compose.build.yaml --env-file .env.example build
 ./scripts/audit-blank-image.sh template-agent:local
 ```
 
@@ -592,7 +607,7 @@ Everything in `scripts/`:
 Run the audit + tests after building a new image:
 
 ```bash
-docker compose --env-file .env.example build
+docker compose -f compose.yaml -f compose.build.yaml --env-file .env.example build
 ./scripts/audit-blank-image.sh template-agent:local
 ./scripts/test-blank-template.sh
 ./scripts/test-default-profile-only.sh

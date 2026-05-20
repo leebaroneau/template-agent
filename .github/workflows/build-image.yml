@@ -1,0 +1,52 @@
+name: Build & push agent stack image
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-agent-stack-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_BUILDKIT: "1"
+      LOCAL_IMAGE: template-agent:audit-${{ github.sha }}
+      REMOTE_IMAGE: ghcr.io/leebaroneau/template-agent
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build local audit image
+        run: docker build -f paperclip/Dockerfile -t "$LOCAL_IMAGE" .
+
+      - name: Audit blank image
+        run: ./scripts/audit-blank-image.sh "$LOCAL_IMAGE"
+
+      - name: Tag release images
+        run: |
+          docker tag "$LOCAL_IMAGE" "$REMOTE_IMAGE:sha-${GITHUB_SHA}"
+          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+            docker tag "$LOCAL_IMAGE" "$REMOTE_IMAGE:latest"
+          fi
+
+      - name: Push release images
+        run: |
+          docker push "$REMOTE_IMAGE:sha-${GITHUB_SHA}"
+          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+            docker push "$REMOTE_IMAGE:latest"
+          fi

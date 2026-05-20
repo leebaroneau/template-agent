@@ -14,6 +14,6 @@ docker compose --env-file .env.example config --services
 When changing the image build, also run:
 
 ```bash
-docker compose --env-file .env.example build
+docker compose -f compose.yaml -f compose.build.yaml --env-file .env.example build
 ./scripts/audit-blank-image.sh template-agent:local
 ```

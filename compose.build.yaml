@@ -1,0 +1,11 @@
+services:
+  paperclip:
+    image: ${TEMPLATE_AGENT_IMAGE:-template-agent:local}
+    build:
+      context: .
+      dockerfile: paperclip/Dockerfile
+    pull_policy: build
+
+  hermes:
+    image: ${TEMPLATE_AGENT_IMAGE:-template-agent:local}
+    pull_policy: never
