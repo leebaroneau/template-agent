@@ -79,6 +79,7 @@ COPY paperclip/entrypoint.sh /opt/paperclip/entrypoint.sh
 COPY paperclip/hermes-entrypoint.sh /opt/paperclip/hermes-entrypoint.sh
 COPY paperclip/patch-hermes-adapter-env.mjs /opt/paperclip/patch-hermes-adapter-env.mjs
 COPY paperclip/patch-hermes-adapter-skills-home.mjs /opt/paperclip/patch-hermes-adapter-skills-home.mjs
+COPY paperclip/patch-hermes-profile-skill-count.mjs /opt/paperclip/patch-hermes-profile-skill-count.mjs
 COPY paperclip/patch-paperclip-company-prefix.mjs /opt/paperclip/patch-paperclip-company-prefix.mjs
 COPY paperclip/patch-paperclip-hermes-defaults.mjs /opt/paperclip/patch-paperclip-hermes-defaults.mjs
 COPY paperclip/profile-sync.mjs /opt/paperclip/profile-sync.mjs
