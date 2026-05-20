@@ -74,7 +74,7 @@ Run:
 npm test
 docker compose --env-file .env.example config --services
 docker compose --env-file .env.example build
-./scripts/audit-blank-image.sh paperclip-hermes-gbrain:blank
+./scripts/audit-blank-image.sh template-agent:local
 ```
 
 The image audit checks both image metadata/history and `/data` contents.

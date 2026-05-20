@@ -65,7 +65,7 @@ exit 64
 async function runAudit(mode) {
   try {
     const result = await withFakeDocker(mode, (env) =>
-      execFileAsync(scriptPath, ['paperclip-hermes-gbrain:test'], { env }),
+      execFileAsync(scriptPath, ['template-agent:test'], { env }),
     );
     return { code: 0, stdout: result.stdout, stderr: result.stderr };
   } catch (error) {

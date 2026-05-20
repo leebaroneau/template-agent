@@ -14,8 +14,8 @@ paperclip_fqdn="paperclip.${domain}"
 hermes_fqdn="hermes.${domain}"
 
 cat <<EOF
-COMPOSE_PROJECT_NAME=paperclip-hermes-gbrain
-AGENT_STACK_IMAGE=paperclip-hermes-gbrain:blank
+COMPOSE_PROJECT_NAME=template-agent
+TEMPLATE_AGENT_IMAGE=template-agent:local
 PAPERCLIP_PORT=3100
 HERMES_PORT=9119
 PAPERCLIP_PUBLIC_URL=${scheme}://${paperclip_fqdn}

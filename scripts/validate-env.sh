@@ -27,7 +27,7 @@ env_value() {
 }
 
 project="$(env_value COMPOSE_PROJECT_NAME)"
-project="${project:-paperclip-hermes-gbrain}"
+project="${project:-template-agent}"
 profiles="$(env_value HERMES_PROFILES)"
 profiles="${profiles:-default}"
 

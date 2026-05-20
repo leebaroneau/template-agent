@@ -92,7 +92,7 @@ test('ensureProfileHomes pre-creates Hermes well-known subdirs with 0700 perms',
 - [ ] **Step 2: Run the test and verify it fails**
 
 ```bash
-cd /Users/leebaroneau/Documents/GitHub/lee-dashboard/00_repos/paperclip-hermes-gbrain
+cd /Users/leebaroneau/Documents/GitHub/lee-dashboard/00_repos/template-agent
 npm test -- --grep 'pre-creates Hermes well-known subdirs'
 ```
 

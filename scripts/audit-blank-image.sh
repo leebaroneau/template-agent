@@ -5,7 +5,7 @@ image="${1:-}"
 
 if [[ -z "$image" ]]; then
   echo "Usage: $0 <image-ref>" >&2
-  echo "Example: $0 paperclip-hermes-gbrain:blank" >&2
+  echo "Example: $0 template-agent:local" >&2
   exit 64
 fi
 
