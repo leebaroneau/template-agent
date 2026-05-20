@@ -120,6 +120,7 @@ export function buildManagedAgentPayload({
   gbrainDataRoot = '/data/gbrain',
   hermesModelConfig,
   capabilityContext,
+  desiredSkills,
 }) {
   const metadata = agent.metadata && typeof agent.metadata === 'object' ? agent.metadata : {};
   const profileSlug = desiredProfileSlug(
@@ -156,6 +157,9 @@ export function buildManagedAgentPayload({
       cwd: '/opt/work',
       ...existingConfig,
       toolsets: normalizeToolsets(existingConfig.toolsets),
+      ...(Array.isArray(desiredSkills)
+        ? { paperclipSkillSync: withDesiredPaperclipSkills(existingConfig.paperclipSkillSync, desiredSkills) }
+        : {}),
       paperclipApiUrl: withApiSuffix(paperclipServerUrl),
       env: {
         ...existingEnv,
@@ -184,6 +188,20 @@ function normalizeToolsets(toolsets) {
     .map((toolset) => toolset.trim())
     .filter((toolset) => toolset && toolset !== 'mcp');
   return [...new Set(normalized)].join(',') || 'terminal,file,web';
+}
+
+function withDesiredPaperclipSkills(existingSync, desiredSkills) {
+  const current = existingSync && typeof existingSync === 'object' && !Array.isArray(existingSync)
+    ? existingSync
+    : {};
+  const normalized = desiredSkills
+    .filter((skill) => typeof skill === 'string')
+    .map((skill) => skill.trim())
+    .filter(Boolean);
+  return {
+    ...current,
+    desiredSkills: [...new Set(normalized)],
+  };
 }
 
 function withSharedOperatingPointers(capabilities) {
@@ -384,6 +402,7 @@ export async function retireProfileHomes({
 export async function reconcileAgents({
   companies,
   listAgents,
+  listCompanySkills,
   patchAgent,
   patchAgentPermissions,
   ensureHomes = ensureProfileHomes,
@@ -421,6 +440,10 @@ export async function reconcileAgents({
     const companyName = company.name || company.shortName || company.id;
     const activeAgents = agents.filter((agent) => !isRetiredAgent(agent));
     const directReportCounts = countDirectReports(activeAgents);
+    const listedSkills = typeof listCompanySkills === 'function'
+      ? await listCompanySkills(company.id)
+      : undefined;
+    const desiredSkills = Array.isArray(listedSkills) ? normalizeSkillKeys(listedSkills) : undefined;
     const orgAgents = [];
 
     for (let agent of agents) {
@@ -512,6 +535,7 @@ export async function reconcileAgents({
           gbrainDataRoot,
           hermesModelConfig: homes.modelConfig,
           capabilityContext,
+          desiredSkills,
         });
         const managedResult = await patchAgent(agent.id, payload);
         agent = mergeAgentPatch(agent, managedResult || payload);
@@ -796,6 +820,17 @@ function normalizeStringList(value) {
     return value.split(',').map((item) => item.trim()).filter(Boolean);
   }
   return undefined;
+}
+
+function normalizeSkillKeys(skills) {
+  return [...new Set(skills
+    .map((skill) => {
+      if (typeof skill === 'string') return skill;
+      if (!skill || typeof skill !== 'object') return '';
+      return firstNonEmpty(skill.key, skill.slug, skill.name, skill.id) || '';
+    })
+    .map((skill) => String(skill).trim())
+    .filter(Boolean))];
 }
 
 function compactObject(object) {
@@ -1134,6 +1169,7 @@ function extractArray(response) {
   if (Array.isArray(response)) return response;
   if (Array.isArray(response?.companies)) return response.companies;
   if (Array.isArray(response?.agents)) return response.agents;
+  if (Array.isArray(response?.skills)) return response.skills;
   if (Array.isArray(response?.data)) return response.data;
   return [];
 }
@@ -1202,6 +1238,17 @@ async function runOnceFromEnv() {
   const result = await reconcileAgents({
     companies,
     listAgents: async (companyId) => extractArray(await api('GET', `/api/companies/${companyId}/agents`)),
+    listCompanySkills: async (companyId) => {
+      try {
+        return extractArray(await api('GET', `/api/companies/${companyId}/skills`));
+      } catch (error) {
+        if (String(error?.message || '').includes(`GET /api/companies/${companyId}/skills failed with 404:`)) {
+          console.warn(`Company skills endpoint is unavailable for ${companyId}; leaving desired skill sync unchanged`);
+          return undefined;
+        }
+        throw error;
+      }
+    },
     patchAgent: async (agentId, payload) => await api('PATCH', `/api/agents/${agentId}`, payload),
     patchAgentPermissions: async (agentId, payload) => await api('PATCH', `/api/agents/${agentId}/permissions`, payload),
     manifest,

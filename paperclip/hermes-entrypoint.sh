@@ -20,6 +20,8 @@ if [[ ! -f /home/node/.hermes/config.yaml && -f "$HERMES_HOME/config.yaml" ]]; t
   chown -h node:node /home/node/.hermes/config.yaml
 fi
 
+node /opt/paperclip/patch-hermes-profile-skill-count.mjs
+
 profile_has_gateway_env() {
   local profile_home="$1"
   local env_file="$profile_home/.env"

@@ -69,6 +69,28 @@ test('buildManagedAgentPayload removes unsupported mcp toolset from existing con
   assert.equal(payload.adapterConfig.toolsets, 'terminal,file,web');
 });
 
+test('buildManagedAgentPayload persists desired Paperclip skills in adapter config', () => {
+  const payload = buildManagedAgentPayload({
+    agent: {
+      name: 'Researcher',
+      adapterConfig: {
+        paperclipSkillSync: {
+          mode: 'managed',
+          desiredSkills: ['stale-skill'],
+        },
+      },
+      metadata: {},
+    },
+    companyName: 'Acme',
+    desiredSkills: [' research ', 'copywriting', 'research', '', 42],
+  });
+
+  assert.deepEqual(payload.adapterConfig.paperclipSkillSync, {
+    mode: 'managed',
+    desiredSkills: ['research', 'copywriting'],
+  });
+});
+
 test('buildManagedAgentPayload inherits Hermes model settings from the profile config', () => {
   const payload = buildManagedAgentPayload({
     agent: {
@@ -936,6 +958,16 @@ test('profile-sync CLI one-shot provisions homes and patches Paperclip API', asy
         ]);
       }
 
+      if (request.method === 'GET' && request.url === '/api/companies/co_1/skills') {
+        return json(response, {
+          skills: [
+            { key: 'research' },
+            { slug: 'copywriting' },
+            { name: 'research' },
+          ],
+        });
+      }
+
       if (request.method === 'PATCH' && request.url === '/api/agents/a_1') {
         const body = await readRequestJson(request);
         patched.push(body);
@@ -978,6 +1010,10 @@ test('profile-sync CLI one-shot provisions homes and patches Paperclip API', asy
     assert.equal(
       patched[0].adapterConfig.env.GBRAIN_HOME,
       join(root, 'gbrain/acme-inc-researcher'),
+    );
+    assert.deepEqual(
+      patched[0].adapterConfig.paperclipSkillSync.desiredSkills,
+      ['research', 'copywriting'],
     );
     await stat(join(root, 'hermes/profiles/acme-inc-researcher/config.yaml'));
     await stat(join(root, 'gbrain/acme-inc-researcher'));

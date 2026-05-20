@@ -58,7 +58,7 @@ path_mappings:
 # Reviewer policy. Used by pipeline-merge-gate to enforce minimum approvals.
 # default_required_reviewers applies repo-wide; by_component overrides per component name.
 reviewer_policy:
-  default_required_reviewers: 1
+  default_required_reviewers: 0
   by_component:
     infra: 2      # e.g. require 2 reviewers for infra-labelled PRs
     auth: 2

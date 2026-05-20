@@ -153,7 +153,7 @@ After the stack is deployed (locally or via Coolify) and the containers are runn
 
 4. **Set `PAPERCLIP_API_KEY=<pcp_board_…>` in env** (Coolify → app → Environment Variables, or local `.env`). This activates the Paperclip MCP server inside Hermes — without a key, every MCP tool call from Hermes will return 401.
 
-5. **Optionally set `PROFILE_SYNC_ENABLED=1`** and `PAPERCLIP_PROFILE_SYNC_API_KEY=<same-key>` to give each Paperclip agent its own isolated Hermes profile and GBrain home (see "Profile Sync & Org Chart").
+5. **Keep `PROFILE_SYNC_ENABLED=1`** and set `PAPERCLIP_PROFILE_SYNC_API_KEY=<same-key>` to give each Paperclip agent its own isolated Hermes profile, GBrain home, and current Paperclip skill set (see "Profile Sync & Org Chart").
 
 6. **Redeploy / restart** so the env changes land in the container.
 
@@ -246,7 +246,7 @@ PAPERCLIP_API_KEY=<pcp_board_...>
 PAPERCLIP_DEFAULT_COMPANY_ID=<uuid>   # optional, single-company convenience
 ```
 
-**Required to enable per-role profile sync:**
+**Required for per-role profile sync:**
 
 ```env
 PROFILE_SYNC_ENABLED=1
@@ -448,7 +448,7 @@ for the pull model, promotion classes, and personal-Hermes curator cron.
 
 ## Profile Sync & Org Chart
 
-The `paperclip` container can run an embedded reconciliation loop that mirrors Paperclip's roster into per-role Hermes profiles and GBrain homes. Enable it in env:
+The `paperclip` container can run an embedded reconciliation loop that mirrors Paperclip's roster into per-role Hermes profiles, GBrain homes, and adapter skill-sync state. It is enabled in the generated Coolify env; set the API key after first-run auth:
 
 ```env
 PROFILE_SYNC_ENABLED=1
@@ -462,6 +462,7 @@ Every `hermes_local` Paperclip agent gets:
 ```text
 Hermes profile: /data/hermes/profiles/<company-role>
 GBrain home:    /data/gbrain/<company-role>
+Skill sync:     adapterConfig.paperclipSkillSync.desiredSkills
 ```
 
 The profile slug is stored on the Paperclip agent's metadata, so company or role renames don't move existing memories.

@@ -65,6 +65,7 @@ runuser -u node -- env HERMES_HOME="$HERMES_HOME" GBRAIN_HOME="$GBRAIN_HOME" her
 runuser -u node -- env HERMES_HOME="$HERMES_HOME" GBRAIN_HOME="$GBRAIN_HOME" gbrain --version
 
 eval "$(node /opt/paperclip/patch-paperclip-hermes-defaults.mjs env)"
+node /opt/paperclip/patch-hermes-profile-skill-count.mjs
 node /opt/paperclip/patch-hermes-adapter-env.mjs
 node /opt/paperclip/patch-hermes-adapter-skills-home.mjs
 node /opt/paperclip/patch-paperclip-hermes-defaults.mjs patch
