@@ -11,12 +11,12 @@ check_absent() {
   local pattern="$2"
   local description="$3"
 
-  if grep -nE "$pattern" "$file" >/tmp/paperclip-hermes-gbrain-blank-matches.$$ 2>/dev/null; then
+  if grep -nE "$pattern" "$file" >/tmp/template-agent-blank-matches.$$ 2>/dev/null; then
     echo "Unexpected template content in $file: $description" >&2
-    cat /tmp/paperclip-hermes-gbrain-blank-matches.$$ >&2
+    cat /tmp/template-agent-blank-matches.$$ >&2
     failed=1
   fi
-  rm -f /tmp/paperclip-hermes-gbrain-blank-matches.$$
+  rm -f /tmp/template-agent-blank-matches.$$
 }
 
 check_present() {
@@ -24,11 +24,11 @@ check_present() {
   local pattern="$2"
   local description="$3"
 
-  if ! grep -nE "$pattern" "$file" >/tmp/paperclip-hermes-gbrain-present-matches.$$ 2>/dev/null; then
+  if ! grep -nE "$pattern" "$file" >/tmp/template-agent-present-matches.$$ 2>/dev/null; then
     echo "Missing expected template content in $file: $description" >&2
     failed=1
   fi
-  rm -f /tmp/paperclip-hermes-gbrain-present-matches.$$
+  rm -f /tmp/template-agent-present-matches.$$
 }
 
 for file in \
@@ -44,11 +44,8 @@ for file in \
   "scripts/render-coolify-compose.sh" \
   "scripts/validate-env.sh"; do
   check_absent "$file" 'hermes-ui|HERMES_UI' "service should be named hermes"
-  # \bleebarone\b uses word boundaries so it catches "leebarone" and
-  # "leebarone.dev" but NOT the shared image registry user "leebaroneau"
-  # in `ghcr.io/leebaroneau/paperclip-hermes-gbrain:latest`, which is the
-  # canonical image all three deployments pull from (see README).
   check_absent "$file" 'Lee'\''s|\bleebarone\b|haverford|alx-finance|paperclip\.leebarone\.dev|hermes\.leebarone\.dev|HERMES_BRIDGE_TOKEN|SERVICE_FQDN_|SERVICE_URL_|COOLIFY_FQDN' "template should not include live client or deployment values"
+  check_absent "$file" 'ghcr\.io|AGENT_STACK_''IMAGE|paperclip-hermes-''gbrain' "template should build locally as template-agent, not pull the legacy registry image"
 done
 
 for expected in \

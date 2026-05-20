@@ -69,7 +69,7 @@ Run:
 
 ```bash
 docker compose --env-file .env.example build
-./scripts/audit-blank-image.sh paperclip-hermes-gbrain:blank
+./scripts/audit-blank-image.sh template-agent:local
 ```
 
 Expected: build succeeds and audit passes.

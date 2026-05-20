@@ -15,5 +15,5 @@ When changing the image build, also run:
 
 ```bash
 docker compose --env-file .env.example build
-./scripts/audit-blank-image.sh paperclip-hermes-gbrain:blank
+./scripts/audit-blank-image.sh template-agent:local
 ```

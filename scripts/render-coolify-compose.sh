@@ -2,7 +2,7 @@
 set -euo pipefail
 
 domain="${1:-}"
-route_id="${2:-paperclip-hermes-gbrain}"
+route_id="${2:-template-agent}"
 
 if [[ -z "$domain" ]]; then
   echo "Usage: $0 <root-domain> [route-id]" >&2

@@ -1,4 +1,4 @@
-# Paperclip Hermes GBrain
+# Template Agent
 
 Blank Coolify-ready template for running Paperclip with Hermes Agent and GBrain.
 
@@ -6,22 +6,22 @@ This repo is intentionally client-neutral. It should contain the deploy recipe o
 
 ## ⚠️ For Agents (Claude, Codex, any LLM editing this repo) — Read First
 
-This is a **template deployed to multiple companies simultaneously** from a single image.
+This is a **template deployed to multiple companies simultaneously** from source.
 
 | Deploy | Coolify host | Watches |
 | --- | --- | --- |
-| **ALX Finance** | `https://coolify.alxfinance.com.au` | `ALX-Finance/paperclip-hermes-gbrain` @ `main` |
-| **Leebarone** | `https://coolify.leebarone.dev` | `leebaroneau/paperclip-hermes-gbrain` @ `deploy/leebarone.dev` |
-| **Genvest** | `http://209.38.27.69:8000` | `leebaroneau/paperclip-hermes-gbrain` @ `main` |
+| **ALX Finance** | `https://coolify.alxfinance.com.au` | `ALX-Finance/template-agent` @ `main` |
+| **Leebarone** | `https://coolify.leebarone.dev` | `leebaroneau/template-agent` @ `main` |
+| **Genvest** | `http://209.38.27.69:8000` | `leebaroneau/template-agent` @ `main` |
 
-All three pull the **same image**: `ghcr.io/leebaroneau/paperclip-hermes-gbrain:latest` (rebuilt by `.github/workflows/build-image.yml` on every push to `main`).
+Each Coolify server builds the image from this repository with the Docker Compose build pack. The GitHub repo no longer publishes or pulls a registry image for normal deployments.
 
 **Rules for any change you propose:**
 
-- A push to a watched branch redeploys **every Coolify watching that branch — simultaneously**. Treat every commit as a multi-tenant change.
+- A push to a watched branch can redeploy **every Coolify watching that branch — simultaneously**. Treat every commit as a multi-tenant change.
 - Per-company customization lives in **Coolify env vars only** (`PAPERCLIP_HOSTNAME`, `HERMES_HOSTNAME`, `PAPERCLIP_API_KEY`, `PAPERCLIP_DEFAULT_COMPANY_ID`, `HERMES_PROFILES`, `PROFILE_SYNC_ENABLED`, …) — **never** introduce per-brand branches or hard-coded brand specifics in `compose.yaml`.
 - Hermes basic-auth hash in `compose.yaml` is shared across all deploys (same plaintext password, hash is irreversible). Rotating it is a single commit on `main` → all three Coolifies pick it up on next deploy.
-- Data volumes are per-Coolify-app (`<app_uuid>_paperclip-data`). Image swaps preserve data; only `docker volume rm` destroys it.
+- Data volumes are per-Coolify-app (`<app_uuid>_paperclip-data`). Rebuilds preserve data; only `docker volume rm` destroys it.
 - When asked "add feature X for one company," gate it behind an env var; do **not** fork or branch the compose.
 
 If you would be tempted to add a feature, env var, or compose section that only one brand needs — **stop and ask the user first.** The unified-branch architecture is deliberate.
@@ -161,7 +161,7 @@ After the stack is deployed (locally or via Coolify) and the containers are runn
 
 ## Coolify Setup
 
-1. **Create a new Docker Compose app** in Coolify pointing at this GitHub repo (`leebaroneau/paperclip-hermes-gbrain`, branch `main`, base directory `/`).
+1. **Create a new Docker Compose app** in Coolify pointing at this GitHub repo (`leebaroneau/template-agent`, branch `main`, base directory `/`).
 2. **Wire up a GitHub source that can read this repo** (skip if the repo is public). Coolify's "Public GitHub" source can only clone public repos. For a private template, attach the app to a GitHub App installation that includes this repo:
    - In Coolify: app → *Source* → pick (or create) a GitHub App installation, and ensure the installation is granted access to this repo on GitHub.
    - Symptom of missing this step: deploy fails in ~0 seconds with `GitHub API call failed: Not Found` in the logs.
@@ -185,46 +185,21 @@ After the stack is deployed (locally or via Coolify) and the containers are runn
    ./scripts/render-coolify-compose.sh client.example.com client-agent-stack
    ```
 
-8. **Deploy.** Then follow the First-Run Flow above to mint the API key and activate the MCP server.
+8. **Deploy.** Coolify builds the image on the target server from `compose.yaml` and `paperclip/Dockerfile`. Then follow the First-Run Flow above to mint the API key and activate the MCP server.
 
 ### Auto-deploy from `main`
 
-[`.github/workflows/build-image.yml`](.github/workflows/build-image.yml) rebuilds and pushes `ghcr.io/leebaroneau/paperclip-hermes-gbrain:latest` on every push to `main` that touches `paperclip/**`, `hermes-runtime/**`, or the workflow file itself. After the image push the workflow makes three HTTP calls to `/api/v1/deploy?uuid=<app-uuid>` on each Coolify (ALX, Leebarone, Genvest) so they pull the new image and recreate containers.
-
-Per-deployment credentials live in this repo's GitHub Actions config (Settings → Secrets and variables → Actions):
-
-| Deployment | `vars.COOLIFY_*_BASE_URL` | `vars.COOLIFY_*_APP_UUID` | `secrets.COOLIFY_*_TOKEN` |
-| --- | --- | --- | --- |
-| ALX | `https://coolify.alxfinance.com.au` | ALX app uuid | ALX Coolify API token |
-| Leebarone | `https://coolify.leebarone.dev` | Leebarone app uuid | Leebarone token |
-| Genvest | `http://209.38.27.69:8000` | Genvest app uuid | Genvest token |
-
-Each trigger is conditional on the corresponding vars+secret being non-empty, so a deployment that hasn't been registered is silently skipped (not failed).
+Use Coolify's Git integration or deploy webhook for auto-deploys. This repo intentionally does not include a GitHub Actions image-publishing workflow; server-side builds keep deployment work on the server and avoid spending Actions minutes on image builds.
 
 ### Recovering from a stuck deploy
 
-The default `force=false` lets Coolify skip a deploy if it thinks the app is already up-to-date. That skip check can race the GHCR manifest push, leaving live containers on the previous `:latest` even after the workflow runs green. Telltale signs:
+If Coolify skips a deploy or keeps running an older built image, trigger a force redeploy from Coolify for the affected app. Telltale signs:
 
 - `docker inspect <container> --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'` shows an old commit SHA.
 - New env vars from a fresh PR are missing inside the container.
 - A line you just added to a baked-in file (e.g. `paperclip/profile-sync.mjs`) is not present at `/opt/paperclip/profile-sync.mjs`.
 
-To force every Coolify to recreate regardless of its skip check, run:
-
-```bash
-gh workflow run build-image.yml -f force=true
-```
-
-This is a `workflow_dispatch` trigger that passes `force=true` through to all three Coolify deploy URLs. The image rebuild is cache-hot (~1–2 min); the Coolify recreates fire on completion.
-
-**Pull-race caveat:** Coolify's deploy recreates containers but does not always `docker pull` first — it can reuse the locally-cached `:latest`, which on a stuck deployment is the old image. If `force=true` recreates the container but the revision label still points at the old SHA, prime the local cache before retrying:
-
-```bash
-ssh <host> docker pull ghcr.io/leebaroneau/paperclip-hermes-gbrain:latest
-gh workflow run build-image.yml -f force=true
-```
-
-The durable fix is configuring each Coolify app's image-pull-policy to "Always" (UI: app → Configuration → Image Pull Policy). Then `force=true` alone is sufficient.
+Because this template builds on the server, recovery should be a Coolify rebuild/redeploy, not a registry pull.
 
 ### Coolify env variable checklist
 
@@ -527,7 +502,7 @@ After a local build, audit the image before publishing or reusing it:
 
 ```bash
 docker compose --env-file .env.example build
-./scripts/audit-blank-image.sh paperclip-hermes-gbrain:blank
+./scripts/audit-blank-image.sh template-agent:local
 ```
 
 The audit fails if the image contains runtime state under `/data`, Lee/client deployment markers, Coolify build metadata, or token-looking secrets in image metadata.
@@ -618,7 +593,7 @@ Run the audit + tests after building a new image:
 
 ```bash
 docker compose --env-file .env.example build
-./scripts/audit-blank-image.sh paperclip-hermes-gbrain:blank
+./scripts/audit-blank-image.sh template-agent:local
 ./scripts/test-blank-template.sh
 ./scripts/test-default-profile-only.sh
 ./scripts/test-hermes-tui-prebuilt.sh
