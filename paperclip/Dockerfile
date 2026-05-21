@@ -49,6 +49,7 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
   && (uv pip install --python ./venv/bin/python -e ".[all,messaging]" \
         || uv pip install --python ./venv/bin/python -e ".[all]" \
         || uv pip install --python ./venv/bin/python -e .) \
+  && uv pip install --python ./venv/bin/python faster-whisper \
   && cd "$HERMES_SRC/web" \
   && npm install \
   && npm run build \
