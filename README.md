@@ -436,6 +436,20 @@ Promotion is centralized: company profiles do not edit shared framework doctrine
 directly. See [docs/100m-framework-learning-loop.md](docs/100m-framework-learning-loop.md)
 for the pull model, promotion classes, and personal-Hermes curator cron.
 
+## EOS Framework Runtime Skill
+
+The bundled `use-eos-framework` skill is installed into every Hermes profile
+through the same `hermes-runtime/skills` propagation path. Agents use it to turn
+selected `$100M` opportunities into Rocks, owners, scorecards, Paperclip issue
+trees, routine setup issues, and escalation paths.
+
+The shared EOS doctrine stays outside this blank template at
+`00_resources/frameworks/eos-framework/`. Company agents write sanitized
+`eos-field-learning` proposals into their role-specific GBrain homes when work
+produces reusable improvements. If the current Paperclip tool surface does not
+include routine creation, agents file a routine setup issue instead of claiming
+that the routine exists.
+
 ## Profile Sync & Org Chart
 
 The `paperclip` container can run an embedded reconciliation loop that mirrors Paperclip's roster into per-role Hermes profiles, GBrain homes, and adapter skill-sync state. It is enabled in the generated Coolify env; set the API key after first-run auth:
