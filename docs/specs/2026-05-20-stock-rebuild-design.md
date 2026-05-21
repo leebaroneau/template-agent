@@ -67,7 +67,7 @@ The compose file declares **three services**, each running the same image with a
 | Service | Command | Port | Purpose |
 | :---- | :---- | :----: | :---- |
 | `paperclip` | `paperclipai serve` | 3100 | Paperclip web UI + REST API |
-| `hermes` | `hermes -p default gateway run` (gateway in background) + `hermes -p default dashboard --host 0.0.0.0 --no-open` | 9119 | Hermes UI/gateway, stock entrypoint, no patch runner |
+| `hermes` | profile bootstrap + `hermes -p default gateway run` for configured gateway profiles; dashboard only when `HERMES_DASHBOARD_ENABLED=1` | 9119 when enabled | Hermes gateway/headless runtime by default; optional UI/debug surface |
 | `agent-sync` | `node /opt/sidecar/agent-sync.mjs` | — | Polls Paperclip API for agents; ensures each active agent has stock `hermes_local` adapter config pointing at the default Hermes profile |
 
 Splitting `agent-sync` out makes failures isolable and logs separable. If it crashes or its dependencies regress, the other two services keep running.
@@ -84,11 +84,11 @@ Splitting `agent-sync` out makes failures isolable and logs separable. If it cra
 
 ### Networking
 
-- All three services on the Coolify-created docker network per stack. Internal addresses: `paperclip:3100`, `hermes:9119`. `agent-sync` hits `http://paperclip:3100` only.
-- Traefik routes the two public hostnames per stack:
-  - Haverford: `paperclip.haverford.au` → service `paperclip`, `hermes.haverford.au` → service `hermes` (chosen subdomains — confirm against existing DNS).
-  - Genvest: existing hostnames preserved.
-- Hermes is NOT exposed publicly without basic-auth. Keep the existing `traefik.http.middlewares.hermes-auth.basicauth.users` label.
+- All three services on the Coolify-created docker network per stack. Internal addresses: `paperclip:3100`; `hermes:9119` only listens when the dashboard is explicitly enabled. `agent-sync` hits `http://paperclip:3100` only.
+- Traefik routes Paperclip publicly per stack:
+  - Haverford: `paperclip.haverford.au` → service `paperclip`.
+  - Genvest: existing Paperclip hostname preserved.
+- Hermes is not publicly routed by default. If a deployment intentionally enables `HERMES_DASHBOARD_ENABLED=1`, route the `hermes` service through deployment-level access control rather than a shared hard-coded basic-auth password.
 
 ### Haverford coexistence rules (shared machine with standalone Hermes)
 
@@ -97,7 +97,7 @@ The new Haverford Coolify app shares a host with the existing standalone Hermes 
 - **Container names:** the new stack's containers are named `paperclip-<new-haverford-uuid>-*`, `hermes-<new-haverford-uuid>-*`, `agent-sync-<new-haverford-uuid>-*`. No name overlap with the standalone Hermes container.
 - **Volume names:** Coolify generates volume names from the app UUID (e.g., `<new-haverford-uuid>_paperclip-data`). These never collide with `tate66...-hermes-data`. **Cross-check before first deploy** that the rendered compose's `volumes:` block doesn't reuse `tate66...-hermes-data` anywhere.
 - **Ports:** Paperclip's `3100` and Hermes's `9119` are container-internal only. Traefik routes traffic on host ports `80/443`. No fixed host-port exposure on the new stack. Confirm the standalone Hermes doesn't bind 9119 on the host either; if it does, the standalone keeps the port (no change) and the new Hermes stays container-internal.
-- **Domains:** the new stack uses `paperclip.haverford.au` + `hermes.haverford.au` (or another agreed subdomain pair). The standalone Hermes keeps whatever subdomain it has today. No DNS or Cloudflare tunnel changes that touch the standalone's routing.
+- **Domains:** the new stack uses `paperclip.haverford.au` for the Paperclip UI. The stack Hermes dashboard is headless/unrouted by default. The standalone Hermes keeps whatever subdomain it has today. No DNS or Cloudflare tunnel changes that touch the standalone's routing.
 - **Coolify destructive operations on the Haverford app:** NEVER call DELETE on the new Haverford app without confirming `docker_cleanup=false` (memory: `feedback_coolify_docker_cleanup_destroys_adjacent` — cleanup matches by name pattern + label and removes adjacent standalone containers).
 
 ### Integration boundaries (where "no customisation" gets tested)
@@ -120,7 +120,8 @@ V1 deliberately runs a single Hermes profile per stack:
 The rebuild keeps env vars boring and runtime-only:
 
 - `TEMPLATE_AGENT_IMAGE=ghcr.io/leebaroneau/template-agent:sha-$SOURCE_COMMIT` in Coolify. Leave Coolify's Literal toggle off so `$SOURCE_COMMIT` expands.
-- `PAPERCLIP_PUBLIC_URL`, `PAPERCLIP_ALLOWED_HOSTNAMES`, `PAPERCLIP_HOSTNAME`, and `HERMES_HOSTNAME` are set per stack.
+- `PAPERCLIP_PUBLIC_URL`, `PAPERCLIP_ALLOWED_HOSTNAMES`, and `PAPERCLIP_HOSTNAME` are set per stack.
+- `HERMES_DASHBOARD_ENABLED=0` is the default. Set it to `1` only when the Hermes dashboard is intentionally exposed for debugging/admin use.
 - `HERMES_PROVIDER` and `HERMES_MODEL` define the default model in Hermes config. Adapter rows may repeat them only if stock Paperclip requires row-level fields.
 - `PAPERCLIP_API_KEY` is the board key used by Hermes MCP calls back into Paperclip.
 - `AGENT_SYNC_ENABLED=1`, `AGENT_SYNC_INTERVAL_SEC=60`, and `PAPERCLIP_AGENT_SYNC_API_KEY=<board-key>` enable the sidecar. If `PAPERCLIP_AGENT_SYNC_API_KEY` is blank, `agent-sync` falls back to `PAPERCLIP_API_KEY`.
@@ -220,7 +221,7 @@ Updates are deliberate: bump a pin → PR → CI builds + smokes → merge. No f
 - Image builds clean from a cold cache (catches dependency drift).
 - `compose config` parses on the rendered `compose.yaml`.
 - `sidecar/agent-sync.test.mjs` runs against a mocked Paperclip API.
-- Smoke test: spin up the 3 services, confirm `/health` on Paperclip and `/api/dashboard/status` on Hermes return 200 within 60s.
+- Smoke test: spin up the 3 services, confirm `/health` on Paperclip returns 200 and the headless Hermes service reaches its readiness marker within 60s. Run a separate dashboard smoke only when `HERMES_DASHBOARD_ENABLED=1`.
 
 ## Safe rollout sequence
 
@@ -245,7 +246,7 @@ Updates are deliberate: bump a pin → PR → CI builds + smokes → merge. No f
 - On `coolify.haverford.au`, create a NEW Docker Compose application from git source `leebaroneau/template-agent` main.
 - Use the Haverford-specific compose env values:
   - `PAPERCLIP_HOSTNAME=paperclip.haverford.au`
-  - `HERMES_HOSTNAME=hermes.haverford.au`
+  - `HERMES_DASHBOARD_ENABLED=0`
   - `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` per chosen provider
   - `PAPERCLIP_API_KEY` — generated after first admin signup; placeholder initially
   - `PAPERCLIP_AGENT_SYNC_API_KEY` — optional separate board key; use the same key as `PAPERCLIP_API_KEY` if Paperclip cannot scope tokens yet

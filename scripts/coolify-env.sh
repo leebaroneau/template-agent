@@ -11,7 +11,6 @@ if [[ -z "$domain" ]]; then
 fi
 
 paperclip_fqdn="paperclip.${domain}"
-hermes_fqdn="hermes.${domain}"
 
 cat <<EOF
 COMPOSE_PROJECT_NAME=template-agent
@@ -21,7 +20,7 @@ HERMES_PORT=9119
 PAPERCLIP_PUBLIC_URL=${scheme}://${paperclip_fqdn}
 PAPERCLIP_ALLOWED_HOSTNAMES=${paperclip_fqdn},localhost,127.0.0.1
 PAPERCLIP_HOSTNAME=${paperclip_fqdn}
-HERMES_HOSTNAME=${hermes_fqdn}
+HERMES_DASHBOARD_ENABLED=0
 HERMES_DASHBOARD_TUI=1
 HERMES_DASHBOARD_SKIP_BUILD=1
 HERMES_PROFILES=default

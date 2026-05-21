@@ -58,6 +58,7 @@ services:
       HERMES_HOME: /data/hermes
       GBRAIN_HOME: /data/gbrain/default
       HERMES_PROFILES: ${HERMES_PROFILES:-default}
+      HERMES_DASHBOARD_ENABLED: ${HERMES_DASHBOARD_ENABLED:-0}
       HERMES_DASHBOARD_HOST: 0.0.0.0
       HERMES_DASHBOARD_PORT: "9119"
       HERMES_DASHBOARD_TUI: ${HERMES_DASHBOARD_TUI:-1}
@@ -74,15 +75,12 @@ services:
       - paperclip-data:/data
     depends_on:
       - paperclip
-    labels:
-      - traefik.enable=true
-      - traefik.http.middlewares.gzip.compress=true
-      - traefik.http.middlewares.hermes-auth.basicauth.users=admin:$2y$05$CQwH/hYpd1Ke70aH1QOmD.HN645xZLHdl1yhR9xyYL5uhGqSOiQf2
-      - traefik.http.routers.hermes.entryPoints=http
-      - traefik.http.routers.hermes.middlewares=gzip,hermes-auth
-      - traefik.http.routers.hermes.rule=Host(`${HERMES_HOSTNAME:-hermes.example.com}`)
-      - traefik.http.routers.hermes.service=hermes
-      - traefik.http.services.hermes.loadbalancer.server.port=9119
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/hermes-entrypoint-ready"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
     restart: unless-stopped
 
 volumes:

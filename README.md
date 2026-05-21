@@ -19,8 +19,8 @@ Production Coolify deploys should pull a prebuilt image from GitHub Container Re
 **Rules for any change you propose:**
 
 - A push to a watched branch can redeploy **every Coolify watching that branch — simultaneously**. Treat every commit as a multi-tenant change.
-- Per-company customization lives in **Coolify env vars only** (`PAPERCLIP_HOSTNAME`, `HERMES_HOSTNAME`, `PAPERCLIP_API_KEY`, `PAPERCLIP_DEFAULT_COMPANY_ID`, `HERMES_PROFILES`, `PROFILE_SYNC_ENABLED`, …) — **never** introduce per-brand branches or hard-coded brand specifics in `compose.yaml`.
-- Hermes basic-auth hash in `compose.yaml` is shared across all deploys (same plaintext password, hash is irreversible). Rotating it is a single commit on `main` → all three Coolifies pick it up on next deploy.
+- Per-company customization lives in **Coolify env vars only** (`PAPERCLIP_HOSTNAME`, `PAPERCLIP_API_KEY`, `PAPERCLIP_DEFAULT_COMPANY_ID`, `HERMES_PROFILES`, `PROFILE_SYNC_ENABLED`, `HERMES_DASHBOARD_ENABLED`, …) — **never** introduce per-brand branches or hard-coded brand specifics in `compose.yaml`.
+- Hermes dashboard is **off by default**. Do not expose a Hermes service domain unless `HERMES_DASHBOARD_ENABLED=1` is intentional for that deployment. Use Paperclip as the primary UI, and use Hermes CLI/MCP/gateways behind it.
 - Data volumes are per-Coolify-app (`<app_uuid>_paperclip-data`). Rebuilds preserve data; only `docker volume rm` destroys it.
 - When asked "add feature X for one company," gate it behind an env var; do **not** fork or branch the compose.
 
@@ -30,7 +30,7 @@ If you would be tempted to add a feature, env var, or compose section that only 
 
 ```text
 paperclip.<client-domain> -> paperclip:3100
-hermes.<client-domain>    -> hermes:9119
+Hermes dashboard is unrouted by default.
 
 Paperclip company → CEO agent → delegates to subordinate agents
        │
@@ -49,14 +49,14 @@ gbrain CLI for memory + knowledge
        GBRAIN_HOME=/data/gbrain/<company-role>            (per-agent brain)
 ```
 
-One image runs two services. Paperclip orchestrates; the Hermes dashboard serves the agent UI and transcript view. Both share `/data`, so memories, skills, and the org chart are visible from either side.
+One image runs two services. Paperclip orchestrates and is the only default public UI. The Hermes service stays headless by default so profile bootstrap and gateway autostart can run without exposing a second browser UI. Both services share `/data`, so memories, skills, and the org chart are visible from either side.
 
 The Paperclip MCP server (see below) closes the loop: Hermes-side agents can file and update Paperclip issues without leaving the conversation.
 
 ## Services
 
 - `paperclip` runs Paperclip on port `3100`.
-- `hermes` runs the Hermes dashboard on port `9119`.
+- `hermes` bootstraps Hermes profiles and starts configured gateways. It only runs the dashboard on port `9119` when `HERMES_DASHBOARD_ENABLED=1`.
 - Both services share the `paperclip-data` volume at `/data`.
 
 ## /data Volume Layout
@@ -92,7 +92,7 @@ cp .env.example .env
 Then open:
 
 - Paperclip: `http://localhost:3100`
-- Hermes: `http://localhost:9119`
+- Hermes dashboard: disabled unless `HERMES_DASHBOARD_ENABLED=1`
 
 Stop it with:
 
@@ -157,7 +157,7 @@ After the stack is deployed (locally or via Coolify) and the containers are runn
 
 6. **Redeploy / restart** so the env changes land in the container.
 
-7. **Talk to Hermes** via the dashboard (`https://hermes.<your-domain>/chat`) or any configured messaging gateway. Hermes can now call Paperclip tools — say *"list paperclip companies"* and the MCP server replies with the live roster.
+7. **Use Paperclip as the main interface**, or talk to Hermes through any configured messaging gateway. If you intentionally enable the dashboard with `HERMES_DASHBOARD_ENABLED=1`, you can also use the Hermes dashboard route. Hermes can call Paperclip tools — say *"list paperclip companies"* and the MCP server replies with the live roster.
 
 ## Coolify Setup
 
@@ -165,9 +165,8 @@ After the stack is deployed (locally or via Coolify) and the containers are runn
 2. **Wire up a GitHub source that can read this repo** (skip if the repo is public). Coolify's "Public GitHub" source can only clone public repos. For a private template, attach the app to a GitHub App installation that includes this repo:
    - In Coolify: app → *Source* → pick (or create) a GitHub App installation, and ensure the installation is granted access to this repo on GitHub.
    - Symptom of missing this step: deploy fails in ~0 seconds with `GitHub API call failed: Not Found` in the logs.
-3. **Pick the public domains** you'll use:
+3. **Pick the public Paperclip domain** you'll use:
    - `paperclip.<client-domain>`
-   - `hermes.<client-domain>`
 4. **Generate starter env values**:
 
    ```bash
@@ -175,9 +174,9 @@ After the stack is deployed (locally or via Coolify) and the containers are runn
    ```
 
 5. **Paste the generated values into Coolify**, replacing the example domain with the real client domain.
-6. **Set per-service domains in the Coolify app UI.** Open the app → *Configuration* → set a domain for `paperclip` (`paperclip.<client-domain>`) and another for `hermes` (`hermes.<client-domain>`). Coolify uses this map to inject the working Traefik routers — the compose's own `${PAPERCLIP_HOSTNAME}` / `${HERMES_HOSTNAME}` placeholders are NOT substituted under Coolify (see "Coolify routing notes" below).
+6. **Set the Paperclip service domain in the Coolify app UI.** Open the app → *Configuration* → set a domain for `paperclip` (`paperclip.<client-domain>`). Coolify uses this map to inject the working Traefik router — the compose's own `${PAPERCLIP_HOSTNAME}` placeholder is not substituted under Coolify (see "Coolify routing notes" below).
 
-   If you only ever expose paperclip via the app's primary FQDN field, Coolify will auto-route paperclip but leave hermes at a 404 — the per-service domain map is the one easy step to miss.
+   Do **not** set a `hermes` service domain unless you also set `HERMES_DASHBOARD_ENABLED=1` and intentionally want the Hermes browser UI exposed for debugging/admin use.
 
 7. **(Optional) Render brand-specific compose routes** if you'd rather hardcode the Traefik labels in a brand fork:
 
@@ -224,10 +223,10 @@ Because production deploys pull prebuilt images, recovery should be a rollback t
 PAPERCLIP_PUBLIC_URL=https://paperclip.<client-domain>
 PAPERCLIP_ALLOWED_HOSTNAMES=paperclip.<client-domain>,localhost,127.0.0.1
 PAPERCLIP_HOSTNAME=paperclip.<client-domain>
-HERMES_HOSTNAME=hermes.<client-domain>
+HERMES_DASHBOARD_ENABLED=0
 ```
 
-Public routing is configured separately via the Coolify per-service domain map (step 6 of *Setting Up A New Coolify Stack*) — not via env vars. The `PAPERCLIP_HOSTNAME` / `HERMES_HOSTNAME` pair is only used by the compose's own Traefik labels for plain `docker compose` deployments, which Coolify doesn't substitute (see "Coolify routing notes"). Keeping them set on a Coolify deploy is harmless and documents intent.
+Public routing is configured separately via the Coolify per-service domain map (step 6 of *Setting Up A New Coolify Stack*) — not via env vars. `PAPERCLIP_HOSTNAME` is only used by the compose's own Traefik labels for plain `docker compose` deployments, which Coolify doesn't substitute (see "Coolify routing notes"). Keeping it set on a Coolify deploy is harmless and documents intent.
 
 **Required to activate the Paperclip MCP server** (set after First-Run step 3 mints a key):
 
@@ -259,37 +258,28 @@ HERMES_GATEWAY_PROFILES=auto
 
 `auto` starts any existing Hermes profile whose `.env` contains a messaging credential such as `TELEGRAM_BOT_TOKEN`. To pin an explicit set, use a comma-separated list like `sales,support`. To disable gateway autostart, set `HERMES_GATEWAY_AUTOSTART=0`.
 
-**Do NOT add blank LLM provider keys** (`OPENAI_API_KEY=`, `ANTHROPIC_API_KEY=`, `OPENROUTER_API_KEY=`) to Coolify. Hermes boots without them; the first-run flow configures a provider via the dashboard at `hermes.<client-domain>/env`.
+**Do NOT add blank LLM provider keys** (`OPENAI_API_KEY=`, `ANTHROPIC_API_KEY=`, `OPENROUTER_API_KEY=`) to Coolify. Hermes boots without them. Configure providers through Hermes CLI/config or temporarily enable the dashboard for admin setup, then turn it back off.
 
 For single-VM deployments, profile-sync env can live in `/data/agent-stack/profile-sync/profile-sync.env` (root-readable) instead of Coolify env. Override `ORG_MIRROR_ROOT` only if you need the org chart files somewhere other than `/data/agent-stack`.
 
 ### Coolify routing notes
 
-Coolify renders `docker-compose.yaml` with `$` escaped to `$$` inside the `labels:` block. That means `${PAPERCLIP_HOSTNAME}` / `${HERMES_HOSTNAME}` in the Traefik labels stay *literal* instead of being substituted — and the same is true for Coolify's own magic vars like `${SERVICE_FQDN_*}` when written into compose labels. Setting `SERVICE_FQDN_HERMES_9119` or `SERVICE_FQDN_HERMES` as an env var does NOT generate routing labels on its own.
+Coolify renders `docker-compose.yaml` with `$` escaped to `$$` inside the `labels:` block. That means `${PAPERCLIP_HOSTNAME}` in the Traefik labels stays *literal* instead of being substituted — and the same is true for Coolify's own magic vars like `${SERVICE_FQDN_*}` when written into compose labels. Setting `SERVICE_FQDN_HERMES_9119` or `SERVICE_FQDN_HERMES` as an env var does NOT generate routing labels on its own.
 
 What Coolify *does* read is the per-service domain map on the application resource. Set it via the UI (recommended) or the API:
 
-1. **Coolify UI:** App → *Configuration* → set domain per service (`paperclip` → `paperclip.<your-domain>`, `hermes` → `hermes.<your-domain>`). Coolify auto-injects working Traefik routers (`http-0-<uuid>-<service>.rule=Host(\`...\`)`) at next deploy. The compose's own labels become no-ops but cost nothing.
-2. **Coolify API:** `PATCH /api/v1/applications/<uuid>` with body `{"docker_compose_domains":{"paperclip":{"name":"paperclip","domain":"http://paperclip.<your-domain>"},"hermes":{"name":"hermes","domain":"http://hermes.<your-domain>"}}}`. Trigger a redeploy after — the change takes effect when the next deploy renders Traefik labels.
+1. **Coolify UI:** App → *Configuration* → set domain per service (`paperclip` → `paperclip.<your-domain>`). Coolify auto-injects a working Traefik router (`http-0-<uuid>-paperclip.rule=Host(\`...\`)`) at next deploy. Add `hermes` only when the dashboard is intentionally enabled.
+2. **Coolify API:** `PATCH /api/v1/applications/<uuid>` with body `{"docker_compose_domains":{"paperclip":{"name":"paperclip","domain":"http://paperclip.<your-domain>"}}}`. Trigger a redeploy after — the change takes effect when the next deploy renders Traefik labels.
 
-Symptom of missing this step: `paperclip.<your-domain>` works (Coolify routes the app's primary FQDN to the first compose service for free) but `hermes.<your-domain>` returns 404. `docker inspect <hermes-container> | grep traefik` shows either no routers or routers with literal `${VAR}` text — both mean the per-service map was never set.
+Symptom of missing this step: `paperclip.<your-domain>` returns 404 or routes to the wrong service. `docker inspect <paperclip-container> | grep traefik` shows either no routers or routers with literal `${VAR}` text — both mean the per-service map was never set.
 
 ### Traefik labels must be UUID-agnostic
 
-**Never write a Coolify resource UUID into a Traefik label in this compose.** Coolify auto-generates `routers.http-0-<this-app-uuid>-<service>` and `routers.https-0-<this-app-uuid>-<service>` per app at deploy time, and it mirrors any middleware chain you put on the user-defined router (`routers.hermes.middlewares=...`) onto the auto-generated ones. The auto-gen path is the only correct one because each Coolify instance fills in its own UUID.
+**Never write a Coolify resource UUID into a Traefik label in this compose.** Coolify auto-generates `routers.http-0-<this-app-uuid>-<service>` and `routers.https-0-<this-app-uuid>-<service>` per app at deploy time. The auto-gen path is the only correct one because each Coolify instance fills in its own UUID.
 
-Embedding a literal UUID — for example `traefik.http.routers.https-0-z141d7h67lhshygmp2ad35xg-hermes.middlewares=gzip,hermes-auth` — pins that router to one specific Coolify app. When the same compose is deployed to a second Coolify instance (different UUID), the second instance ends up with both its own correct auto-generated routers AND the original instance's leaked router, all listening on the same `Host()`. Traefik then picks between them by priority/specificity, producing inconsistent behavior across requests (some authed, some not).
+Embedding a literal UUID pins that router to one specific Coolify app. When the same compose is deployed to a second Coolify instance (different UUID), the second instance ends up with both its own correct auto-generated routers and the original instance's leaked router, all listening on the same `Host()`. Traefik then picks between them by priority/specificity, producing inconsistent behavior across requests.
 
-To attach a middleware like basicAuth, attach it to the **user-named router only**:
-
-```yaml
-- traefik.http.middlewares.hermes-auth.basicauth.users=admin:<bcrypt>
-- traefik.http.routers.hermes.entryPoints=http
-- traefik.http.routers.hermes.middlewares=gzip,hermes-auth          # ← middleware chain here, Coolify mirrors to https-0-<uuid>-hermes
-- traefik.http.routers.hermes.rule=Host(`${HERMES_HOSTNAME:-hermes.example.com}`)
-- traefik.http.routers.hermes.service=hermes
-- traefik.http.services.hermes.loadbalancer.server.port=9119
-```
+Do not add a shared hard-coded Hermes basic-auth hash to this template. If a deployment exposes the Hermes dashboard, protect it with deployment-level access control such as the existing auth-gate or Cloudflare Access.
 
 If you find a `routers.https-0-<some-uuid>-...` or `routers.http-0-<some-uuid>-...` line written into this compose (by hand-edit, a previous merge, or a paste from a Coolify-rendered compose), delete it before committing — Coolify will regenerate the right version per deploy.
 
