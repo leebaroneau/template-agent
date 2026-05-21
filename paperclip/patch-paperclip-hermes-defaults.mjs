@@ -65,15 +65,24 @@ export function formatShellExports({ config, env = process.env }) {
 }
 
 export function patchAgentsRouteSource(source) {
-  if (
-    source.includes('// agent-stack Hermes defaults')
-    || (source.includes('adapterType === "hermes_local"') && source.includes('process.env.HERMES_MODEL'))
-  ) {
+  if (source.includes('Object.prototype.hasOwnProperty.call(next, "model")')) {
     return source;
   }
 
-  const needle = '        if (adapterType === "codex_local") {';
   const insert = `        // agent-stack Hermes defaults
+        if (adapterType === "hermes_local") {
+            const hasModel = Object.prototype.hasOwnProperty.call(next, "model");
+            const hasProvider = Object.prototype.hasOwnProperty.call(next, "provider");
+            if (!hasModel && asNonEmptyString(process.env.HERMES_MODEL)) {
+                next.model = process.env.HERMES_MODEL;
+            }
+            if (!hasProvider && asNonEmptyString(process.env.HERMES_PROVIDER)) {
+                next.provider = process.env.HERMES_PROVIDER;
+            }
+            return ensureGatewayDeviceKey(adapterType, next);
+        }
+`;
+  const oldInsert = `        // agent-stack Hermes defaults
         if (adapterType === "hermes_local") {
             if (!asNonEmptyString(next.model) && asNonEmptyString(process.env.HERMES_MODEL)) {
                 next.model = process.env.HERMES_MODEL;
@@ -85,6 +94,11 @@ export function patchAgentsRouteSource(source) {
         }
 `;
 
+  if (source.includes(oldInsert)) {
+    return source.replace(oldInsert, insert);
+  }
+
+  const needle = '        if (adapterType === "codex_local") {';
   const patched = source.replace(needle, `${insert}${needle}`);
   if (patched === source) {
     throw new Error('Unable to patch Paperclip Hermes creation defaults');

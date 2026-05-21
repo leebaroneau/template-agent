@@ -51,6 +51,8 @@ test('patchAgentsRouteSource adds hermes_local creation defaults', () => {
   const patched = patchAgentsRouteSource(source);
 
   assert.match(patched, /adapterType === "hermes_local"/);
+  assert.match(patched, /Object\.prototype\.hasOwnProperty\.call\(next, "model"\)/);
+  assert.match(patched, /Object\.prototype\.hasOwnProperty\.call\(next, "provider"\)/);
   assert.match(patched, /process\.env\.HERMES_MODEL/);
   assert.match(patched, /process\.env\.HERMES_PROVIDER/);
 });
@@ -59,6 +61,29 @@ test('patchAgentsRouteSource is idempotent', () => {
   const source = `
     function applyCreateDefaultsByAdapterType(adapterType, adapterConfig) {
         const next = { ...adapterConfig };
+        if (adapterType === "hermes_local") {
+            const hasModel = Object.prototype.hasOwnProperty.call(next, "model");
+            const hasProvider = Object.prototype.hasOwnProperty.call(next, "provider");
+            if (!hasModel && asNonEmptyString(process.env.HERMES_MODEL)) {
+                next.model = process.env.HERMES_MODEL;
+            }
+            if (!hasProvider && asNonEmptyString(process.env.HERMES_PROVIDER)) {
+                next.provider = process.env.HERMES_PROVIDER;
+            }
+            return ensureGatewayDeviceKey(adapterType, next);
+        }
+        return ensureGatewayDeviceKey(adapterType, next);
+    }
+`;
+
+  assert.equal(patchAgentsRouteSource(source), source);
+});
+
+test('patchAgentsRouteSource upgrades the older Hermes defaults patch', () => {
+  const source = `
+    function applyCreateDefaultsByAdapterType(adapterType, adapterConfig) {
+        const next = { ...adapterConfig };
+        // agent-stack Hermes defaults
         if (adapterType === "hermes_local") {
             if (!asNonEmptyString(next.model) && asNonEmptyString(process.env.HERMES_MODEL)) {
                 next.model = process.env.HERMES_MODEL;
@@ -72,5 +97,8 @@ test('patchAgentsRouteSource is idempotent', () => {
     }
 `;
 
-  assert.equal(patchAgentsRouteSource(source), source);
+  const patched = patchAgentsRouteSource(source);
+
+  assert.match(patched, /Object\.prototype\.hasOwnProperty\.call\(next, "model"\)/);
+  assert.doesNotMatch(patched, /!asNonEmptyString\\(next\\.model\\) && asNonEmptyString\\(process\\.env\\.HERMES_MODEL\\)/);
 });
