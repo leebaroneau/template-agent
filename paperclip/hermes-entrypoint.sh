@@ -7,6 +7,8 @@ export HERMES_PROFILES="${HERMES_PROFILES:-default}"
 export HERMES_HOME="${HERMES_HOME:-$HERMES_DATA_ROOT}"
 export GBRAIN_HOME="${GBRAIN_HOME:-$GBRAIN_DATA_ROOT/default}"
 
+rm -f /tmp/hermes-entrypoint-ready
+
 mkdir -p "$HERMES_DATA_ROOT" "$GBRAIN_DATA_ROOT" /home/node/.hermes /opt/work /data/.locks
 if [[ ! -e /hermes || -L /hermes ]]; then
   ln -sfn /data /hermes
@@ -107,4 +109,5 @@ case "${HERMES_DASHBOARD_SKIP_BUILD:-1}" in
   1|true|TRUE|True|yes|YES|Yes) args+=(--skip-build) ;;
 esac
 
+touch /tmp/hermes-entrypoint-ready
 exec runuser -u node -- hermes "${args[@]}"
