@@ -67,3 +67,9 @@ test('local build override builds the template-agent image from this repository'
   assert.match(compose, /pull_policy:\s*build/);
   assert.match(compose, /pull_policy:\s*never/);
 });
+
+test('Hermes image installs the Anthropic provider dependency', async () => {
+  const dockerfile = await readFile(join(repoRoot, 'paperclip/Dockerfile'), 'utf8');
+
+  assert.match(dockerfile, /uv pip install --python \.\/venv\/bin\/python[^\n]*"anthropic>=0\.39\.0"/);
+});
