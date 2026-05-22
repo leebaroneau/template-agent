@@ -345,6 +345,10 @@ A healthy server replies with `serverInfo: {"name":"paperclip","version":"0.1.0"
 
 When you (or an upstream update) add a new MCP server to `hermes-runtime/templates/config.yaml`, the `bootstrap-profiles.sh` entrypoint script idempotently merges any *missing* `mcp_servers.*` entries into every profile config on the next container start — both `HERMES_PROFILES`-listed profiles AND per-role profiles that `profile-sync.mjs` created at runtime under `/data/hermes/profiles/`. Existing entries are never overwritten, so per-profile customisations are preserved. New servers added to the template propagate to every Hermes profile automatically without a manual patch.
 
+**Brand overlays.** Brand wrappers (e.g. `agent-genvest`) can contribute additional `mcp_servers` entries without modifying or forking this image. Drop YAML files into `/opt/hermes-runtime/templates/overlays/*.yaml` — typically via Docker Compose `configs:` mounts on both the `paperclip` and `hermes` services — and `bootstrap-profiles.sh` merges each file's `mcp_servers.*` into the effective template before merging that into each profile. The merge is strictly additive at both layers: the canonical `config.yaml` wins over any overlay on key collision, and existing profile entries always win over the effective template. Among overlays, alphabetic-first filename wins on collision.
+
+Overlay errors (malformed YAML, missing `mcp_servers` key, non-dict `mcp_servers` value) emit a single stderr warning and skip that overlay — bootstrap never crashes because of overlay errors. See `hermes-runtime/templates/overlays/README.md` (shipped in the image) for the contract a brand overlay file must follow.
+
 ### Bundled skill: `using-paperclip`
 
 The MCP server provides typed tools. The bundled `using-paperclip` Hermes skill provides *behaviour* — when and how agents should reach for those tools. It lives at `hermes-runtime/skills/using-paperclip/SKILL.md` and is symlinked into every Hermes profile's `skills/agent-stack/` directory by `bootstrap-profiles.sh` (same pattern as the upstream GBrain skills).
