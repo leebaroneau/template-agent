@@ -11,4 +11,5 @@ jobs:
     permissions:
       issues: write
     with:
+      runner: '["ubuntu-latest"]'
       config-path: .github/pipeline-config.yml

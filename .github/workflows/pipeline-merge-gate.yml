@@ -21,4 +21,5 @@ jobs:
       issues: read
       checks: read
     with:
+      runner: '["ubuntu-latest"]'
       config-path: .github/pipeline-config.yml
