@@ -26,7 +26,6 @@ Optional overrides:
 | Variable | Default | Notes |
 | :---- | :---- | :---- |
 | `AGENT_STATE_KEY_FILE` | `/home/node/.ssh/agent-state-deploy` | Where the entrypoint writes the decoded key. Change only if you need an alternate path. |
-| `AGENT_STATE_SSH_ALIAS` | `github-agent-state` | SSH alias used in the clone URL. |
 | `AGENT_STATE_WORKDIR` | `/tmp/agent-state-repo` | Working directory for the clone inside the container. |
 
 ## Coolify wiring

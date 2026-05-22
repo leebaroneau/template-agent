@@ -29,8 +29,7 @@ fi
 
 BRAND="${AGENT_STATE_BRAND:-${AGENT_STATE_REPO##*/}}"
 KEY_FILE="${AGENT_STATE_KEY_FILE:-/home/node/.ssh/agent-state-deploy}"
-SSH_ALIAS="${AGENT_STATE_SSH_ALIAS:-github-agent-state}"
-REPO_URL="${SSH_ALIAS}:${AGENT_STATE_REPO}.git"
+REPO_URL="git@github.com:${AGENT_STATE_REPO}.git"
 WORKDIR="${AGENT_STATE_WORKDIR:-/tmp/agent-state-repo}"
 DATE="$(date -u +%Y-%m-%d)"
 
