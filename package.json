@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test paperclip/*.test.mjs scripts/*.test.mjs && ./scripts/test-default-profile-only.sh && ./scripts/test-hermes-tui-prebuilt.sh && ./scripts/test-no-provider-placeholders.sh && ./scripts/test-blank-template.sh",
+    "test": "node --test paperclip/*.test.mjs scripts/*.test.mjs && ./scripts/test-default-profile-only.sh && ./scripts/test-hermes-tui-prebuilt.sh && ./scripts/test-no-provider-placeholders.sh && ./scripts/test-blank-template.sh && ./scripts/test-bootstrap-overlays.sh",
     "audit:image": "./scripts/audit-blank-image.sh"
   }
 }

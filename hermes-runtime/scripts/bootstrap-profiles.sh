@@ -4,7 +4,7 @@ set -euo pipefail
 HERMES_DATA_ROOT="${HERMES_DATA_ROOT:-/opt/data/hermes}"
 GBRAIN_DATA_ROOT="${GBRAIN_DATA_ROOT:-/opt/data/gbrain}"
 HERMES_PROFILES="${HERMES_PROFILES:-default}"
-TEMPLATE_DIR="/opt/hermes-runtime/templates"
+TEMPLATE_DIR="${TEMPLATE_DIR:-/opt/hermes-runtime/templates}"
 
 mkdir -p "$HERMES_DATA_ROOT/profiles" "$GBRAIN_DATA_ROOT"
 
@@ -93,41 +93,86 @@ install_agent_stack_skills() {
   done
 }
 
-# Idempotently add any mcp_servers entries that exist in the template config
-# but are missing from this profile's config. Existing entries are NEVER
-# overwritten, so user customisations (different command path, disabled flag,
-# extra fields) are preserved. New top-level keys added to the template
-# (e.g. paperclip MCP server) are inherited by existing profiles on next boot.
+# Idempotently add any mcp_servers entries that exist in the canonical
+# template config — or in any brand overlay file under
+# $TEMPLATE_DIR/overlays/*.yaml — but are missing from this profile's
+# config. Existing profile entries are NEVER overwritten, so user
+# customisations (different command path, disabled flag, extra fields)
+# are preserved.
 #
-# Uses Hermes' bundled Python interpreter for PyYAML.
+# Merge semantics (strictly additive at both layers):
+#   - Canonical template wins over any overlay on key collision.
+#   - Among overlays, alphabetic-first filename wins on collision.
+#   - Profile wins over the effective (canonical + overlays) template.
+#
+# Brand wrappers contribute overlays via Docker Compose `configs:` mounts
+# at /opt/hermes-runtime/templates/overlays/<brand>.yaml on both the
+# paperclip AND hermes services. See hermes-runtime/templates/overlays/README.md.
+#
+# Error handling: malformed YAML, missing `mcp_servers` key, or non-dict
+# `mcp_servers` value emit a single stderr warning and the overlay is
+# skipped. Bootstrap MUST NOT crash because of overlay errors — the
+# canonical template path remains authoritative.
+#
+# Uses Hermes' bundled Python interpreter for PyYAML (overridable via
+# BOOTSTRAP_PYTHON_BIN for tests).
 sync_mcp_servers_from_template() {
   local profile_config="$1"
   local template_config="$TEMPLATE_DIR/config.yaml"
-  local python_bin="/usr/local/lib/hermes-agent/venv/bin/python"
+  local overlays_dir="$TEMPLATE_DIR/overlays"
+  local python_bin="${BOOTSTRAP_PYTHON_BIN:-/usr/local/lib/hermes-agent/venv/bin/python}"
 
   if [[ ! -f "$profile_config" || ! -f "$template_config" || ! -x "$python_bin" ]]; then
     return 0
   fi
 
-  "$python_bin" - "$template_config" "$profile_config" <<'PYEOF'
+  "$python_bin" - "$template_config" "$profile_config" "$overlays_dir" <<'PYEOF'
+import os
 import sys
+import glob
 import yaml
 
-template_path, profile_path = sys.argv[1], sys.argv[2]
+template_path, profile_path, overlays_dir = sys.argv[1], sys.argv[2], sys.argv[3]
 
 with open(template_path) as f:
     template = yaml.safe_load(f) or {}
 
+effective_mcp = dict(template.get("mcp_servers") or {})
+
+# Absorb overlay mcp_servers into the effective template, strictly additive.
+# Canonical wins on collision (entries already in effective_mcp are skipped).
+# Among overlays, alphabetic-first filename wins on collision (later files
+# also see those keys as already-present).
+if os.path.isdir(overlays_dir):
+    for overlay_path in sorted(glob.glob(os.path.join(overlays_dir, "*.yaml"))):
+        try:
+            with open(overlay_path) as f:
+                overlay = yaml.safe_load(f) or {}
+        except (OSError, yaml.YAMLError) as exc:
+            print(f"[bootstrap] overlay {overlay_path}: skipped ({exc.__class__.__name__})", file=sys.stderr)
+            continue
+        if not isinstance(overlay, dict):
+            print(f"[bootstrap] overlay {overlay_path}: skipped (top-level is not a mapping)", file=sys.stderr)
+            continue
+        overlay_mcp = overlay.get("mcp_servers")
+        if overlay_mcp is None:
+            continue
+        if not isinstance(overlay_mcp, dict):
+            print(f"[bootstrap] overlay {overlay_path}: skipped (mcp_servers is not a mapping)", file=sys.stderr)
+            continue
+        for name, spec in overlay_mcp.items():
+            if name not in effective_mcp:
+                effective_mcp[name] = spec
+
+if not effective_mcp:
+    sys.exit(0)
+
 with open(profile_path) as f:
     profile = yaml.safe_load(f) or {}
 
-template_mcp = template.get("mcp_servers") or {}
-if not template_mcp:
-    sys.exit(0)
-
 profile_mcp = profile.get("mcp_servers") or {}
 added = []
-for name, spec in template_mcp.items():
+for name, spec in effective_mcp.items():
     if name not in profile_mcp:
         profile_mcp[name] = spec
         added.append(name)
