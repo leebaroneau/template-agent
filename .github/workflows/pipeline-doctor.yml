@@ -22,6 +22,7 @@ jobs:
       # you can drop this line — the doctor's read-only checks need no write scope.
       issues: write
     with:
+      runner: '["ubuntu-latest"]'
       config-path: .github/pipeline-config.yml
       branch: main
       # Set to "true" to have scheduled runs post into a long-running tracker

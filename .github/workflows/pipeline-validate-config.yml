@@ -22,4 +22,5 @@ jobs:
     permissions:
       contents: read
     with:
+      runner: '["ubuntu-latest"]'
       config-path: .github/pipeline-config.yml

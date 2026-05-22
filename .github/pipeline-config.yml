@@ -57,11 +57,15 @@ path_mappings:
 
 # Reviewer policy. Used by pipeline-merge-gate to enforce minimum approvals.
 # default_required_reviewers applies repo-wide; by_component overrides per component name.
+#
+# Personal-account, solo-maintainer repo: zero required reviewers everywhere.
+# The pipeline-core install template ships `infra: 2`/`auth: 2` as an example of
+# how to require multiple reviewers on sensitive areas. That's appropriate for a
+# team repo with multiple maintainers; here it just blocks every infra-touching
+# PR (and this is purely a personal/public repo on a single GitHub account).
 reviewer_policy:
   default_required_reviewers: 0
-  by_component:
-    infra: 2      # e.g. require 2 reviewers for infra-labelled PRs
-    auth: 2
+  by_component: {}
 
 # Delivery settings. Optional.
 # delivery:

@@ -12,4 +12,5 @@ jobs:
       contents: read
       pull-requests: write
     with:
+      runner: '["ubuntu-latest"]'
       labeler-config: .github/labeler.yml
