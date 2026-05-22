@@ -88,7 +88,7 @@ case "$1" in
 esac
 ASKPASS
   chmod 700 "$GIT_ASKPASS_FILE"
-  git_auth_env=(env GIT_TERMINAL_PROMPT=0 "GIT_ASKPASS=$GIT_ASKPASS_FILE")
+  git_auth_env=(env GIT_TERMINAL_PROMPT=0 "GIT_ASKPASS=$GIT_ASKPASS_FILE" "AGENT_STATE_TOKEN=$AGENT_STATE_TOKEN")
 elif [[ -n "${AGENT_STATE_KEY:-}" ]]; then
   git_auth_env=(env "GIT_SSH_COMMAND=ssh -i $AGENT_STATE_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new")
 fi

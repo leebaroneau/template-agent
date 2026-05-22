@@ -52,7 +52,7 @@ case "$1" in
 esac
 ASKPASS
   chmod 700 "$git_askpass"
-  git_auth_env=(env GIT_TERMINAL_PROMPT=0 "GIT_ASKPASS=$git_askpass")
+  git_auth_env=(env GIT_TERMINAL_PROMPT=0 "GIT_ASKPASS=$git_askpass" "AGENT_STATE_TOKEN=$AGENT_STATE_TOKEN")
 else
   log "ERROR: no deploy key at $KEY_FILE and AGENT_STATE_TOKEN is unset. Skipping backup so this missing-auth state does not block deployment, but the operator should investigate."
   exit 0
