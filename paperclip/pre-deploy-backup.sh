@@ -10,8 +10,8 @@
 # and `pre_deployment_container_name` to `paperclip` (this service).
 #
 # Required env vars (set in Coolify on the application):
-#   AGENT_STATE_REPO       - e.g. Haverford-Brands/agent-haverford
-#   AGENT_STATE_BRAND      - short slug for log + commit attribution (e.g. haverford)
+#   AGENT_STATE_REPO       - e.g. <Org>/agent-<brand>
+#   AGENT_STATE_BRAND      - short slug for log + commit attribution
 #   AGENT_STATE_DEPLOY_KEY - base64-encoded SSH private key for the repo's deploy key
 #                            (installed into ~/.ssh/agent-state-deploy by entrypoint.sh)
 #
