@@ -15,18 +15,31 @@ The dual container stores all live state (Paperclip DB, Hermes profiles, GBrain 
 
 Both push to the same `<Org>/agent-<brand>` GitHub repo, which holds dated snapshot directories with the Paperclip DB dump, tarred Hermes profiles, and tarred GBrain pglites.
 
+Hermes profile archives intentionally exclude reconstructible dependency/cache folders and nested historical profile backups (`profile-backups`, `python-packages`, `bin`, `lsp`, `cache`, `audio_cache`, `__pycache__`). The state repo should preserve current operational state, not duplicate package installs or old backup material that can push snapshots past GitHub's 100 MB per-file limit.
+
+## Uniform repo shape
+
+Every brand deployment uses the same repo boundary:
+
+- `leebaroneau/template-agent` is the only deployable code base for the stock Paperclip+Hermes+GBrain stack.
+- `<Org>/agent-<brand>` is a private state-only repo. It holds nightly and pre-deploy snapshots only, not Dockerfiles, compose files, runtime seed scripts, or brand wrapper code.
+- Coolify deploys the brand stack from `template-agent` and injects brand-specific settings through environment variables, persistent storage, and the `/data` volume.
+- Both backup paths push into the brand's `agent-<brand>` repo so restore history lives with the brand while deployable code stays centralized.
+
+If an older brand repo still contains a deployment wrapper or forked agent code, archive that history to a branch/tag before converting `main` to the state-only snapshot layout.
+
 ## Mandatory requirements per brand
 
 A brand deployment is "compliant" iff all of the following are true:
 
 - [ ] A private GitHub repo exists at `<Org>/agent-<brand>` (state-only; no code)
-- [ ] An SSH deploy key with write access is registered on that repo
-- [ ] The droplet host has the private key at a known path (e.g. `/root/.ssh/agent-<brand>-deploy`, mode 600)
+- [ ] An SSH deploy key with write access is registered on that repo. If deploy keys are disabled for the repo/org, use a root-owned GitHub token file instead.
+- [ ] The droplet host has the private key at a known path (e.g. `/root/.ssh/agent-<brand>-deploy`, mode 600), or a root-owned token file at `/root/agent-state-backup/github-token` (mode 600)
 - [ ] An `ssh-keyscan github.com` line is in the droplet's `~/.ssh/known_hosts`
 - [ ] The state repo has been cloned once on the droplet at `/root/agent-state-backup/repo` (or equivalent), with the SSH alias `github-agent-state` mapping the deploy key to github.com
-- [ ] A `backup.env` file on the droplet sets `AGENT_STATE_REPO`, `AGENT_STATE_BRAND`, `AGENT_STATE_KEY`, `AGENT_STATE_COMPOSE_FILTER`
+- [ ] A `backup.env` file on the droplet sets `AGENT_STATE_REPO`, `AGENT_STATE_BRAND`, `AGENT_STATE_COMPOSE_FILTER`, and either `AGENT_STATE_KEY` or `AGENT_STATE_TOKEN_FILE`
 - [ ] A cron entry at `0 17 * * *` UTC (or equivalent) runs `nightly-backup.sh` and appends to `/var/log/agent-state-backup.log`
-- [ ] Coolify env vars on the application include `AGENT_STATE_REPO`, `AGENT_STATE_BRAND`, `AGENT_STATE_DEPLOY_KEY` (base64 of the private key; marked secret)
+- [ ] Coolify env vars on the application include `AGENT_STATE_REPO`, `AGENT_STATE_BRAND`, and either `AGENT_STATE_DEPLOY_KEY` (base64 of the private key; marked secret) or `AGENT_STATE_TOKEN` (marked secret)
 - [ ] Coolify `pre_deployment_command` is set to `bash /opt/paperclip/pre-deploy-backup.sh`
 - [ ] Coolify `pre_deployment_command_container` is set to `paperclip` (the dual-container's paperclip service)
 - [ ] At least one nightly commit AND one pre-deploy commit have landed on the state repo
@@ -65,6 +78,8 @@ gh api -X POST repos/<Org>/agent-<brand>/keys \
   -F read_only=false
 ```
 
+If GitHub returns `Deploy keys are disabled for this repository`, store a GitHub token with push access as `/root/agent-state-backup/github-token` on the droplet (`chmod 600`) and use `AGENT_STATE_TOKEN_FILE=/root/agent-state-backup/github-token` in `backup.env`. For the Coolify pre-deploy hook, set `AGENT_STATE_TOKEN` as a secret runtime variable instead of `AGENT_STATE_DEPLOY_KEY`.
+
 ### 3. Wire SSH alias + first clone (host-side)
 
 ```bash
@@ -94,6 +109,8 @@ ssh <brand>-droplet "cat > /root/agent-state-backup/backup.env <<EOF
 AGENT_STATE_REPO=<Org>/agent-<brand>
 AGENT_STATE_BRAND=<brand>
 AGENT_STATE_KEY=/root/.ssh/agent-<brand>-deploy
+# Or, when deploy keys are disabled:
+# AGENT_STATE_TOKEN_FILE=/root/agent-state-backup/github-token
 AGENT_STATE_COMPOSE_FILTER=<coolify-app-uuid>
 AGENT_STATE_RETENTION_DAYS=30
 EOF
@@ -130,6 +147,9 @@ ssh <brand>-droplet "KEY_B64=\$(base64 -w 0 ~/.ssh/agent-<brand>-deploy); \
   jq -nc --arg v \"\$KEY_B64\" '{key:\"AGENT_STATE_DEPLOY_KEY\", value:\$v, is_preview:false, is_buildtime:false, is_literal:true, is_multiline:false}' | \
   curl -sS -X POST -H 'Authorization: Bearer $TOKEN' -H 'Content-Type: application/json' \
     --data-binary @- '$BASE/api/v1/applications/$APP_UUID/envs'"
+
+# If deploy keys are disabled, set AGENT_STATE_TOKEN as a secret runtime env
+# instead of AGENT_STATE_DEPLOY_KEY.
 
 # Set pre_deployment_command + container:
 curl -sS -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
