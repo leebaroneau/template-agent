@@ -66,9 +66,8 @@ main() {
   local workdir="${AGENT_STATE_WORKDIR:-/tmp/agent-state-repo}"
   local date
   date="$(date -u +%Y-%m-%d)"
-  local tmp_dir
-  tmp_dir="$(mktemp -d -t agent-state-XXXXXX)"
-  trap 'rm -rf "$tmp_dir"' EXIT
+  TMP_DIR="$(mktemp -d -t agent-state-XXXXXX)"
+  trap 'rm -rf "${TMP_DIR:-}"' EXIT
 
   local -a git_auth_env=()
   local git_auth_url="git@github.com:${AGENT_STATE_REPO}.git"
@@ -76,7 +75,7 @@ main() {
     git_auth_env=(env "GIT_SSH_COMMAND=ssh -i $key_file -o IdentitiesOnly=yes -o UserKnownHostsFile=/home/node/.ssh/known_hosts -o StrictHostKeyChecking=accept-new")
   elif [[ -n "${AGENT_STATE_TOKEN:-}" ]]; then
     git_auth_url="https://github.com/${AGENT_STATE_REPO}.git"
-    local git_askpass="$tmp_dir/git-askpass.sh"
+    local git_askpass="$TMP_DIR/git-askpass.sh"
     cat > "$git_askpass" <<'ASKPASS'
 #!/usr/bin/env bash
 case "$1" in
@@ -95,14 +94,14 @@ ASKPASS
 
   # 1. Paperclip DB dump
   log "Dumping Paperclip DB"
-  paperclipai db:backup --dir "$tmp_dir" >/dev/null 2>&1
+  paperclipai db:backup --dir "$TMP_DIR" >/dev/null 2>&1
   local db_file
-  db_file="$(ls -1t "$tmp_dir"/paperclip-*.sql.gz | head -1)"
+  db_file="$(ls -1t "$TMP_DIR"/paperclip-*.sql.gz | head -1)"
   [[ -f "$db_file" ]] || { log "ERROR: paperclipai db:backup produced no .sql.gz; aborting"; exit 1; }
 
   # 2. Hermes profiles + 3. GBrain  (both live on the shared /data volume)
   log "Taring Hermes profiles + GBrain"
-  tar czf "$tmp_dir/hermes-profiles.tar.gz" \
+  tar czf "$TMP_DIR/hermes-profiles.tar.gz" \
     --exclude='hermes/profiles/*/profile-backups' \
     --exclude='hermes/profiles/*/python-packages' \
     --exclude='hermes/profiles/*/bin' \
@@ -112,7 +111,7 @@ ASKPASS
     --exclude='*/__pycache__' \
     -C /data \
     hermes/profiles hermes/SOUL.md hermes/auth.json hermes/.env hermes/cron hermes/hooks 2>/dev/null || true
-  tar czf "$tmp_dir/gbrain.tar.gz" -C /data gbrain 2>/dev/null || true
+  tar czf "$TMP_DIR/gbrain.tar.gz" -C /data gbrain 2>/dev/null || true
 
   # 4. Clone (or refresh) the state repo via the deploy key
   log "Refreshing $workdir"
@@ -123,8 +122,8 @@ ASKPASS
   local snapshot_dir="$workdir/$date"
   mkdir -p "$snapshot_dir"
   stage_snapshot_file "$db_file" "$snapshot_dir" "paperclip-db.sql.gz"
-  stage_snapshot_file "$tmp_dir/hermes-profiles.tar.gz" "$snapshot_dir" "hermes-profiles.tar.gz" "no hermes-profiles archive, skipping"
-  stage_snapshot_file "$tmp_dir/gbrain.tar.gz" "$snapshot_dir" "gbrain.tar.gz" "no gbrain archive, skipping"
+  stage_snapshot_file "$TMP_DIR/hermes-profiles.tar.gz" "$snapshot_dir" "hermes-profiles.tar.gz" "no hermes-profiles archive, skipping"
+  stage_snapshot_file "$TMP_DIR/gbrain.tar.gz" "$snapshot_dir" "gbrain.tar.gz" "no gbrain archive, skipping"
 
   cd "$workdir"
   git add -A
