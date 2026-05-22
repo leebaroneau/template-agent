@@ -74,3 +74,63 @@ for (const script of scripts) {
     }
   });
 }
+
+test('paperclip/pre-deploy-backup.sh exits cleanly after a successful mocked backup', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'agent-state-main-'));
+  const bin = join(root, 'bin');
+  const workdir = join(root, 'repo');
+  const scriptPath = resolve('paperclip/pre-deploy-backup.sh');
+
+  try {
+    await execFileAsync('mkdir', ['-p', bin]);
+    await writeFile(join(bin, 'paperclipai'), [
+      '#!/usr/bin/env bash',
+      'set -euo pipefail',
+      'dir=""',
+      'while [[ $# -gt 0 ]]; do',
+      '  case "$1" in',
+      '    --dir) dir="$2"; shift 2 ;;',
+      '    *) shift ;;',
+      '  esac',
+      'done',
+      'mkdir -p "$dir"',
+      'printf db > "$dir/paperclip-test.sql.gz"',
+    ].join('\n'));
+    await writeFile(join(bin, 'tar'), [
+      '#!/usr/bin/env bash',
+      'set -euo pipefail',
+      'if [[ "${1:-}" == "czf" ]]; then',
+      '  printf archive > "$2"',
+      'fi',
+    ].join('\n'));
+    await writeFile(join(bin, 'git'), [
+      '#!/usr/bin/env bash',
+      'set -euo pipefail',
+      'for arg in "$@"; do',
+      '  if [[ "$arg" == "clone" ]]; then',
+      '    mkdir -p "${@: -1}"',
+      '    exit 0',
+      '  fi',
+      '  if [[ "$arg" == "diff" ]]; then',
+      '    exit 1',
+      '  fi',
+      'done',
+      'exit 0',
+    ].join('\n'));
+    await execFileAsync('chmod', ['+x', join(bin, 'paperclipai'), join(bin, 'tar'), join(bin, 'git')]);
+
+    const env = {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH}`,
+      AGENT_STATE_REPO: 'Example/agent-example',
+      AGENT_STATE_BRAND: 'example',
+      AGENT_STATE_TOKEN: 'dummy',
+      AGENT_STATE_WORKDIR: workdir,
+    };
+
+    const result = await execFileAsync('bash', [scriptPath], { env });
+    assert.match(result.stderr, /Done\./);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
