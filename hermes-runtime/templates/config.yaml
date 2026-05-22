@@ -2,6 +2,17 @@ mcp_servers:
   paperclip:
     command: "node"
     args: ["/opt/paperclip/mcp-paperclip/server.mjs"]
+    # Hermes filters env when spawning MCP subprocesses — only keys listed here
+    # get forwarded. Without this block the paperclip MCP starts with no API key
+    # and a default base URL of 127.0.0.1:3100 (where there is no Paperclip from
+    # the Hermes container), so tool calls fail with "fetch failed" and
+    # "companyId is required". ${VAR} placeholders resolve from the container env
+    # at spawn time. See: tools/mcp_tool.py::_interpolate_env_vars in hermes-agent.
+    env:
+      PAPERCLIP_API_KEY: "${PAPERCLIP_API_KEY}"
+      PAPERCLIP_API_BASE: "${PAPERCLIP_API_BASE}"
+      PAPERCLIP_DEFAULT_COMPANY_ID: "${PAPERCLIP_DEFAULT_COMPANY_ID}"
+      PAPERCLIP_PROFILE_SYNC_API_KEY: "${PAPERCLIP_PROFILE_SYNC_API_KEY}"
     enabled: true
     timeout: 60
     connect_timeout: 30
