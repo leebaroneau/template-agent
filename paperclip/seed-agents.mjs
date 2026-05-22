@@ -33,6 +33,7 @@ const LEARNING_PROTOCOL_POINTER = [
   `If that shared file is unavailable, read ${LEARNING_PROTOCOL_FILE} in your HERMES_HOME.`,
   'Use your role-specific GBRAIN_HOME for durable learned summaries; do not crawl all of /data.',
 ].join(' ');
+const DEFAULT_HERMES_TOOLSETS = 'terminal,file,web,mcp';
 
 const roles = [
   {
@@ -164,7 +165,7 @@ function adapterConfig(profile) {
     timeoutSec: 1800,
     persistSession: true,
     quiet: true,
-    toolsets: 'terminal,file,web',
+    toolsets: DEFAULT_HERMES_TOOLSETS,
     cwd: '/opt/work',
     paperclipApiUrl: paperclipAgentApiUrl,
     env: {

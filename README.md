@@ -298,7 +298,7 @@ If you find a `routers.https-0-<some-uuid>-...` or `routers.http-0-<some-uuid>-.
 
 ## Paperclip MCP Server
 
-The blank Hermes config is intentionally empty, with one exception: a Paperclip MCP server is wired in by default so Hermes agents in any new setup can file and track work in Paperclip through typed tool calls instead of constructing shell `curl` commands.
+The blank Hermes config is intentionally empty, with one exception: a Paperclip MCP server is wired in by default so Hermes agents in any new setup can file and track work in Paperclip through typed tool calls instead of constructing shell `curl` commands. Seeded agents and profile-sync-managed agents also get the Hermes `mcp` toolset in their Paperclip adapter config by default, so the profile config and the runtime tool access stay aligned.
 
 The server lives at `paperclip/mcp-paperclip/` and is baked into the image at `/opt/paperclip/mcp-paperclip/`. It is registered in `hermes-runtime/templates/config.yaml` under `mcp_servers.paperclip`, exposing eight tools to every Hermes profile:
 
@@ -479,6 +479,7 @@ Every `hermes_local` Paperclip agent gets:
 Hermes profile: /data/hermes/profiles/<company-role>
 GBrain home:    /data/gbrain/<company-role>
 Skill sync:     adapterConfig.paperclipSkillSync.desiredSkills
+Toolsets:       adapterConfig.toolsets includes terminal,file,web,mcp
 ```
 
 The profile slug is stored on the Paperclip agent's metadata, so company or role renames don't move existing memories.

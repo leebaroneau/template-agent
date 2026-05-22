@@ -70,19 +70,32 @@ test('buildManagedAgentPayload preserves managed timeouts above the minimum', ()
   assert.equal(payload.adapterConfig.timeoutSec, 3600);
 });
 
-test('buildManagedAgentPayload removes unsupported mcp toolset from existing configs', () => {
+test('buildManagedAgentPayload preserves and dedupes Hermes MCP toolset in existing configs', () => {
   const payload = buildManagedAgentPayload({
     agent: {
       name: 'Engineer',
       adapterConfig: {
-        toolsets: 'terminal,file,web,mcp',
+        toolsets: 'terminal,file,web,mcp,mcp',
       },
       metadata: {},
     },
     companyName: 'Acme',
   });
 
-  assert.equal(payload.adapterConfig.toolsets, 'terminal,file,web');
+  assert.equal(payload.adapterConfig.toolsets, 'terminal,file,web,mcp');
+});
+
+test('buildManagedAgentPayload enables Hermes MCP toolset for managed agents by default', () => {
+  const payload = buildManagedAgentPayload({
+    agent: {
+      name: 'CTO',
+      adapterConfig: {},
+      metadata: {},
+    },
+    companyName: 'Acme',
+  });
+
+  assert.equal(payload.adapterConfig.toolsets, 'terminal,file,web,mcp');
 });
 
 test('buildManagedAgentPayload persists desired Paperclip skills in adapter config', () => {
@@ -675,7 +688,7 @@ test('reconcileAgents clears stale Hermes model settings in Paperclip default mo
     assert.equal(apiCalls.length, 1);
     assert.equal(apiCalls[0].payload.adapterConfig.model, null);
     assert.equal(apiCalls[0].payload.adapterConfig.provider, null);
-    assert.equal(apiCalls[0].payload.adapterConfig.toolsets, 'terminal,file,web');
+    assert.equal(apiCalls[0].payload.adapterConfig.toolsets, 'terminal,file,web,mcp');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

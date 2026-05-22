@@ -29,6 +29,7 @@ const MIN_MANAGED_TIMEOUT_SEC = 1800;
 const HERMES_MODEL_MODE_INHERIT = 'inherit';
 const HERMES_MODEL_MODE_PAPERCLIP_DEFAULT = 'paperclip-default';
 const DEFAULT_COMPANY_SKILL_SOURCE_DIR = '/opt/hermes-runtime/skills';
+const DEFAULT_HERMES_TOOLSETS = Object.freeze(['terminal', 'file', 'web', 'mcp']);
 const DEFAULT_COMPANY_SKILL_SLUGS = Object.freeze([
   'gbrain',
   'use-100m-framework',
@@ -170,7 +171,7 @@ export function buildManagedAgentPayload({
     timeoutSec: MIN_MANAGED_TIMEOUT_SEC,
     persistSession: true,
     quiet: true,
-    toolsets: 'terminal,file,web',
+    toolsets: DEFAULT_HERMES_TOOLSETS.join(','),
     cwd: '/opt/work',
     ...existingConfigForPayload,
     timeoutSec,
@@ -233,12 +234,13 @@ function normalizeHermesModelMode(mode) {
 function normalizeToolsets(toolsets) {
   const rawToolsets = typeof toolsets === 'string' && toolsets.trim()
     ? toolsets
-    : 'terminal,file,web';
+    : DEFAULT_HERMES_TOOLSETS.join(',');
   const normalized = rawToolsets
     .split(',')
     .map((toolset) => toolset.trim())
-    .filter((toolset) => toolset && toolset !== 'mcp');
-  return [...new Set(normalized)].join(',') || 'terminal,file,web';
+    .filter(Boolean);
+  const withDefaults = [...normalized, ...DEFAULT_HERMES_TOOLSETS];
+  return [...new Set(withDefaults)].join(',');
 }
 
 function withDesiredPaperclipSkills(existingSync, desiredSkills) {

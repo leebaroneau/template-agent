@@ -62,6 +62,7 @@ test('seeds the Hermes agent with model and provider from Hermes config', async 
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.equal(capturedPayload.adapterConfig.model, 'gpt-5.5');
     assert.equal(capturedPayload.adapterConfig.provider, 'openai-codex');
+    assert.equal(capturedPayload.adapterConfig.toolsets, 'terminal,file,web,mcp');
     assert.equal(capturedPayload.adapterConfig.paperclipApiUrl, 'http://127.0.0.1:3100/api');
     assert.equal(capturedPayload.adapterConfig.env.PAPERCLIP_API_URL, 'http://127.0.0.1:3100');
     assert.match(capturedPayload.capabilities, /Delegation Protocol/);
