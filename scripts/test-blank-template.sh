@@ -101,6 +101,14 @@ check_present "hermes-runtime/skills/use-100m-framework/SKILL.md" 'Do not edit s
 check_present "paperclip/learning-protocol.md" 'type: 100m-field-learning' "canonical learning protocol should define 100m field-learning pages"
 check_present "hermes-runtime/templates/LEARNING_PROTOCOL.md" 'type: 100m-field-learning' "profile fallback learning protocol should define 100m field-learning pages"
 check_present "README.md" '100M Framework Learning Loop' "README should link the framework learning loop operations doc"
+check_present "hermes-runtime/skills/use-eos-framework/SKILL.md" '^name: use-eos-framework$' "bundled EOS application skill should exist"
+check_present "hermes-runtime/skills/use-eos-framework/SKILL.md" 'eos-field-learning' "EOS skill should define field-learning proposal capture"
+check_present "hermes-runtime/skills/use-eos-framework/SKILL.md" 'paperclip_create_issue' "EOS skill should use Paperclip issue creation"
+check_present "hermes-runtime/skills/use-eos-framework/SKILL.md" 'use-100m-framework' "EOS skill should compose with the 100m framework"
+check_present "hermes-runtime/skills/use-eos-framework/SKILL.md" 'routine setup issue' "EOS skill should avoid claiming unavailable routine creation"
+check_present "paperclip/learning-protocol.md" 'type: eos-field-learning' "canonical learning protocol should define EOS field-learning pages"
+check_present "hermes-runtime/templates/LEARNING_PROTOCOL.md" 'type: eos-field-learning' "profile fallback learning protocol should define EOS field-learning pages"
+check_present "README.md" 'EOS Framework Runtime Skill' "README should document the EOS runtime skill"
 
 if [[ "$failed" -ne 0 ]]; then
   exit 1

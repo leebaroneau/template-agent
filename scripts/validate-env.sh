@@ -35,14 +35,15 @@ paperclip_url="$(env_value PAPERCLIP_PUBLIC_URL)"
 paperclip_hosts="$(env_value PAPERCLIP_ALLOWED_HOSTNAMES)"
 paperclip_hostname="$(env_value PAPERCLIP_HOSTNAME)"
 hermes_hostname="$(env_value HERMES_HOSTNAME)"
+hermes_dashboard_enabled="$(env_value HERMES_DASHBOARD_ENABLED)"
+hermes_dashboard_enabled="${hermes_dashboard_enabled:-0}"
 
 if [[ "$mode" == "coolify" ]]; then
   missing=0
   for pair in \
     "PAPERCLIP_PUBLIC_URL:$paperclip_url" \
     "PAPERCLIP_ALLOWED_HOSTNAMES:$paperclip_hosts" \
-    "PAPERCLIP_HOSTNAME:$paperclip_hostname" \
-    "HERMES_HOSTNAME:$hermes_hostname"; do
+    "PAPERCLIP_HOSTNAME:$paperclip_hostname"; do
     key="${pair%%:*}"
     value="${pair#*:}"
     if [[ -z "$value" ]]; then
@@ -65,10 +66,22 @@ if [[ "$mode" == "coolify" ]]; then
     missing=1
   fi
 
-  if [[ "$paperclip_hostname" == *example.com || "$hermes_hostname" == *example.com ]]; then
+  if [[ "$paperclip_hostname" == *example.com ]]; then
     echo "Coolify hostnames must be real client hostnames, not example.com placeholders." >&2
     missing=1
   fi
+
+  case "$hermes_dashboard_enabled" in
+    1|true|TRUE|True|yes|YES|Yes|on|ON|On)
+      if [[ -z "$hermes_hostname" ]]; then
+        echo "Missing required Coolify value when Hermes dashboard is enabled: HERMES_HOSTNAME" >&2
+        missing=1
+      elif [[ "$hermes_hostname" == *example.com ]]; then
+        echo "Hermes hostname must be a real client hostname when the dashboard is enabled." >&2
+        missing=1
+      fi
+      ;;
+  esac
 
   if [[ "$missing" -ne 0 ]]; then
     exit 1
@@ -80,6 +93,9 @@ echo "Services: paperclip, hermes"
 if [[ "$mode" == "coolify" ]]; then
   echo "Public Paperclip URL: $paperclip_url"
   echo "Paperclip hostname: $paperclip_hostname"
-  echo "Hermes hostname: $hermes_hostname"
+  case "$hermes_dashboard_enabled" in
+    1|true|TRUE|True|yes|YES|Yes|on|ON|On) echo "Hermes hostname: $hermes_hostname" ;;
+    *) echo "Hermes dashboard: disabled" ;;
+  esac
 fi
 echo "Profiles: $profiles"

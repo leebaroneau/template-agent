@@ -93,6 +93,15 @@ start_gateway_profiles() {
 
 start_gateway_profiles
 
+case "${HERMES_DASHBOARD_ENABLED:-0}" in
+  1|true|TRUE|True|yes|YES|Yes|on|ON|On) ;;
+  *)
+    touch /tmp/hermes-entrypoint-ready
+    echo "[hermes-entrypoint] Hermes dashboard disabled; gateway autostart completed."
+    exec sleep infinity
+    ;;
+esac
+
 host="${HERMES_DASHBOARD_HOST:-0.0.0.0}"
 port="${HERMES_DASHBOARD_PORT:-9119}"
 args=(dashboard --host "$host" --port "$port" --no-open)
