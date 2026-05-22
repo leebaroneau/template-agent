@@ -28,6 +28,24 @@ fi
 
 export ORG_MIRROR_ROOT="${ORG_MIRROR_ROOT:-/data/agent-stack}"
 
+# Install per-brand state-repo SSH deploy key on container start so the
+# pre-deployment backup hook (paperclip/pre-deploy-backup.sh) can push to
+# the state repo. Coolify supplies the key as base64 via AGENT_STATE_DEPLOY_KEY
+# env var. Safe no-op when unset.
+if [[ -n "${AGENT_STATE_DEPLOY_KEY:-}" ]]; then
+  install -d -m 700 -o node -g node /home/node/.ssh
+  KEY_FILE="${AGENT_STATE_KEY_FILE:-/home/node/.ssh/agent-state-deploy}"
+  printf '%s' "$AGENT_STATE_DEPLOY_KEY" | base64 -d > "$KEY_FILE"
+  chmod 600 "$KEY_FILE"
+  chown node:node "$KEY_FILE"
+  # Pin github.com host key once (skips first-use prompt on later ssh calls).
+  if ! grep -q "^github.com " /home/node/.ssh/known_hosts 2>/dev/null; then
+    ssh-keyscan -t rsa,ecdsa,ed25519 github.com 2>/dev/null >> /home/node/.ssh/known_hosts || true
+    chown node:node /home/node/.ssh/known_hosts 2>/dev/null || true
+  fi
+  echo "[agent-stack] AGENT_STATE_DEPLOY_KEY installed at $KEY_FILE for pre-deploy backups"
+fi
+
 mkdir -p "$HERMES_DATA_ROOT" "$GBRAIN_DATA_ROOT" /home/node/.hermes /opt/work /data/.locks
 if [[ ! -e /hermes || -L /hermes ]]; then
   ln -sfn /data /hermes

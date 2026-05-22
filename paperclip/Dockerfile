@@ -27,6 +27,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ffmpeg \
     git \
     jq \
+    openssh-client \
     python3 \
     python3-pip \
     python3-venv \
@@ -78,6 +79,7 @@ COPY paperclip/important-information-index.md /opt/paperclip/important-informati
 COPY paperclip/gbrain-wrapper.sh /usr/local/bin/gbrain
 COPY paperclip/entrypoint.sh /opt/paperclip/entrypoint.sh
 COPY paperclip/hermes-entrypoint.sh /opt/paperclip/hermes-entrypoint.sh
+COPY paperclip/pre-deploy-backup.sh /opt/paperclip/pre-deploy-backup.sh
 COPY paperclip/patch-hermes-adapter-env.mjs /opt/paperclip/patch-hermes-adapter-env.mjs
 COPY paperclip/patch-hermes-adapter-skills-home.mjs /opt/paperclip/patch-hermes-adapter-skills-home.mjs
 COPY paperclip/patch-hermes-profile-skill-count.mjs /opt/paperclip/patch-hermes-profile-skill-count.mjs
@@ -101,7 +103,7 @@ RUN mkdir -p /data /opt/work \
   && chmod +x /opt/hermes-runtime/scripts/*.sh \
   && chmod +x /usr/local/bin/bun \
   && chmod +x /usr/local/bin/gbrain \
-  && chmod +x /opt/paperclip/entrypoint.sh /opt/paperclip/hermes-entrypoint.sh
+  && chmod +x /opt/paperclip/entrypoint.sh /opt/paperclip/hermes-entrypoint.sh /opt/paperclip/pre-deploy-backup.sh
 
 EXPOSE 3100 9119
 
