@@ -48,10 +48,26 @@ test('buildManagedAgentPayload isolates Hermes and GBrain for one profile', () =
   assert.equal(payload.adapterConfig.env.GBRAIN_HOME, '/data/gbrain/acme-researcher');
   assert.equal(payload.adapterConfig.env.PAPERCLIP_API_URL, 'http://paperclip:3100');
   assert.equal(payload.adapterConfig.env.KEEP_ME, '1');
+  assert.equal(payload.adapterConfig.timeoutSec, 1800);
   assert.equal(payload.adapterConfig.paperclipApiUrl, 'http://paperclip:3100/api');
   assert.equal(payload.metadata.existing, true);
   assert.equal(payload.metadata.agentStackProfileSlug, 'acme-researcher');
   assert.equal(payload.metadata.managedBy, 'agent-stack profile-sync.mjs');
+});
+
+test('buildManagedAgentPayload preserves managed timeouts above the minimum', () => {
+  const payload = buildManagedAgentPayload({
+    agent: {
+      name: 'Long Runner',
+      adapterConfig: {
+        timeoutSec: 3600,
+      },
+      metadata: {},
+    },
+    companyName: 'Acme',
+  });
+
+  assert.equal(payload.adapterConfig.timeoutSec, 3600);
 });
 
 test('buildManagedAgentPayload removes unsupported mcp toolset from existing configs', () => {
@@ -133,7 +149,7 @@ test('buildManagedAgentPayload can keep managed agents on Paperclip model defaul
 
   assert.equal(payload.adapterConfig.model, null);
   assert.equal(payload.adapterConfig.provider, null);
-  assert.equal(payload.adapterConfig.timeoutSec, 60);
+  assert.equal(payload.adapterConfig.timeoutSec, 1800);
   assert.equal(payload.adapterConfig.env.KEEP_ME, '1');
 });
 

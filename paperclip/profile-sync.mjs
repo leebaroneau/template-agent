@@ -25,6 +25,7 @@ const DEFAULT_MANIFEST_PATH = '/data/agent-stack/profile-sync/manifest.json';
 const DEFAULT_SYNC_API_BASE = 'http://paperclip:3100';
 const DEFAULT_AGENT_API_URL = 'http://127.0.0.1:3100';
 const DEFAULT_ORG_MIRROR_ROOT = '/data/agent-stack';
+const MIN_MANAGED_TIMEOUT_SEC = 1800;
 const HERMES_MODEL_MODE_INHERIT = 'inherit';
 const HERMES_MODEL_MODE_PAPERCLIP_DEFAULT = 'paperclip-default';
 const DELEGATION_PROTOCOL_PATH = '/data/agent-stack/delegation-protocol.md';
@@ -156,16 +157,18 @@ export function buildManagedAgentPayload({
   const capabilities = capabilityContext
     ? withCapabilityDiscovery(agent.capabilities, agent, capabilityContext)
     : normalizedCapabilityText(agent.capabilities);
+  const timeoutSec = managedTimeoutSec(existingConfigForPayload.timeoutSec);
 
   const adapterConfig = {
     ...(!usePaperclipModelDefault && hermesModelConfig?.model ? { model: hermesModelConfig.model } : {}),
     ...(!usePaperclipModelDefault && hermesModelConfig?.provider ? { provider: hermesModelConfig.provider } : {}),
-    timeoutSec: 1800,
+    timeoutSec: MIN_MANAGED_TIMEOUT_SEC,
     persistSession: true,
     quiet: true,
     toolsets: 'terminal,file,web',
     cwd: '/opt/work',
     ...existingConfigForPayload,
+    timeoutSec,
     toolsets: normalizeToolsets(existingConfig.toolsets),
     ...(Array.isArray(desiredSkills)
       ? { paperclipSkillSync: withDesiredPaperclipSkills(existingConfig.paperclipSkillSync, desiredSkills) }
@@ -197,6 +200,12 @@ export function buildManagedAgentPayload({
       managedBy: MANAGED_BY,
     },
   };
+}
+
+function managedTimeoutSec(timeoutSec) {
+  const numericTimeoutSec = Number(timeoutSec);
+  if (!Number.isFinite(numericTimeoutSec)) return MIN_MANAGED_TIMEOUT_SEC;
+  return Math.max(numericTimeoutSec, MIN_MANAGED_TIMEOUT_SEC);
 }
 
 function normalizeHermesModelMode(mode) {
