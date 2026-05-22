@@ -120,9 +120,6 @@
 - name: type:task
   color: bfdadc
   description: 'Internal work: refactor, docs, infra (Jira: Task)'
-- name: type:upstream-tracking
-  color: 5319e7
-  description: 'Tracks a deferred decision or upstream change to revisit on a review-by date'
 - name: wontfix
   color: cccccc
   description: 'Closed: won''t fix'
