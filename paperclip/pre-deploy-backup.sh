@@ -25,88 +25,127 @@ set -euo pipefail
 
 log() { printf '[pre-deploy-backup] %s\n' "$*" >&2; }
 
-if [[ -z "${AGENT_STATE_REPO:-}" ]]; then
-  log "AGENT_STATE_REPO is unset; skipping pre-deploy backup (this is a no-op for unconfigured deployments)."
-  exit 0
-fi
+file_size_bytes() {
+  stat -c%s "$1" 2>/dev/null || stat -f%z "$1"
+}
 
-BRAND="${AGENT_STATE_BRAND:-${AGENT_STATE_REPO##*/}}"
-KEY_FILE="${AGENT_STATE_KEY_FILE:-/home/node/.ssh/agent-state-deploy}"
-WORKDIR="${AGENT_STATE_WORKDIR:-/tmp/agent-state-repo}"
-DATE="$(date -u +%Y-%m-%d)"
-TMP_DIR="$(mktemp -d -t agent-state-XXXXXX)"
-trap 'rm -rf "$TMP_DIR"' EXIT
+stage_snapshot_file() {
+  local source_file="$1"
+  local snapshot_dir="$2"
+  local snapshot_name="$3"
+  local missing_message="${4:-no $snapshot_name archive, skipping}"
+  local split_bytes="${AGENT_STATE_ARCHIVE_SPLIT_BYTES:-95000000}"
 
-git_auth_env=()
-git_auth_url="git@github.com:${AGENT_STATE_REPO}.git"
-if [[ -f "$KEY_FILE" ]]; then
-  git_auth_env=(env "GIT_SSH_COMMAND=ssh -i $KEY_FILE -o IdentitiesOnly=yes -o UserKnownHostsFile=/home/node/.ssh/known_hosts -o StrictHostKeyChecking=accept-new")
-elif [[ -n "${AGENT_STATE_TOKEN:-}" ]]; then
-  git_auth_url="https://github.com/${AGENT_STATE_REPO}.git"
-  git_askpass="$TMP_DIR/git-askpass.sh"
-  cat > "$git_askpass" <<'ASKPASS'
+  if [[ ! -f "$source_file" ]]; then
+    log "  ($missing_message)"
+    return 0
+  fi
+
+  rm -f "$snapshot_dir/$snapshot_name" "$snapshot_dir/$snapshot_name.part-"*
+
+  local size
+  size="$(file_size_bytes "$source_file")"
+  if (( size > split_bytes )); then
+    log "  splitting $snapshot_name ($size bytes) into ${split_bytes}-byte parts"
+    split -b "$split_bytes" -d -a 4 "$source_file" "$snapshot_dir/$snapshot_name.part-"
+    return 0
+  fi
+
+  mv "$source_file" "$snapshot_dir/$snapshot_name"
+  log "  saved $snapshot_name ($size bytes)"
+}
+
+main() {
+  if [[ -z "${AGENT_STATE_REPO:-}" ]]; then
+    log "AGENT_STATE_REPO is unset; skipping pre-deploy backup (this is a no-op for unconfigured deployments)."
+    exit 0
+  fi
+
+  local brand="${AGENT_STATE_BRAND:-${AGENT_STATE_REPO##*/}}"
+  local key_file="${AGENT_STATE_KEY_FILE:-/home/node/.ssh/agent-state-deploy}"
+  local workdir="${AGENT_STATE_WORKDIR:-/tmp/agent-state-repo}"
+  local date
+  date="$(date -u +%Y-%m-%d)"
+  local tmp_dir
+  tmp_dir="$(mktemp -d -t agent-state-XXXXXX)"
+  trap 'rm -rf "$tmp_dir"' EXIT
+
+  local -a git_auth_env=()
+  local git_auth_url="git@github.com:${AGENT_STATE_REPO}.git"
+  if [[ -f "$key_file" ]]; then
+    git_auth_env=(env "GIT_SSH_COMMAND=ssh -i $key_file -o IdentitiesOnly=yes -o UserKnownHostsFile=/home/node/.ssh/known_hosts -o StrictHostKeyChecking=accept-new")
+  elif [[ -n "${AGENT_STATE_TOKEN:-}" ]]; then
+    git_auth_url="https://github.com/${AGENT_STATE_REPO}.git"
+    local git_askpass="$tmp_dir/git-askpass.sh"
+    cat > "$git_askpass" <<'ASKPASS'
 #!/usr/bin/env bash
 case "$1" in
   Username*) printf '%s\n' 'x-access-token' ;;
   Password*) printf '%s\n' "$AGENT_STATE_TOKEN" ;;
 esac
 ASKPASS
-  chmod 700 "$git_askpass"
-  git_auth_env=(env GIT_TERMINAL_PROMPT=0 "GIT_ASKPASS=$git_askpass" "AGENT_STATE_TOKEN=$AGENT_STATE_TOKEN")
-else
-  log "ERROR: no deploy key at $KEY_FILE and AGENT_STATE_TOKEN is unset. Skipping backup so this missing-auth state does not block deployment, but the operator should investigate."
-  exit 0
+    chmod 700 "$git_askpass"
+    git_auth_env=(env GIT_TERMINAL_PROMPT=0 "GIT_ASKPASS=$git_askpass" "AGENT_STATE_TOKEN=$AGENT_STATE_TOKEN")
+  else
+    log "ERROR: no deploy key at $key_file and AGENT_STATE_TOKEN is unset. Skipping backup so this missing-auth state does not block deployment, but the operator should investigate."
+    exit 0
+  fi
+
+  log "Brand: $brand  Repo: $AGENT_STATE_REPO  Date: $date"
+
+  # 1. Paperclip DB dump
+  log "Dumping Paperclip DB"
+  paperclipai db:backup --dir "$tmp_dir" >/dev/null 2>&1
+  local db_file
+  db_file="$(ls -1t "$tmp_dir"/paperclip-*.sql.gz | head -1)"
+  [[ -f "$db_file" ]] || { log "ERROR: paperclipai db:backup produced no .sql.gz; aborting"; exit 1; }
+
+  # 2. Hermes profiles + 3. GBrain  (both live on the shared /data volume)
+  log "Taring Hermes profiles + GBrain"
+  tar czf "$tmp_dir/hermes-profiles.tar.gz" \
+    --exclude='hermes/profiles/*/profile-backups' \
+    --exclude='hermes/profiles/*/python-packages' \
+    --exclude='hermes/profiles/*/bin' \
+    --exclude='hermes/profiles/*/lsp' \
+    --exclude='hermes/profiles/*/cache' \
+    --exclude='hermes/profiles/*/audio_cache' \
+    --exclude='*/__pycache__' \
+    -C /data \
+    hermes/profiles hermes/SOUL.md hermes/auth.json hermes/.env hermes/cron hermes/hooks 2>/dev/null || true
+  tar czf "$tmp_dir/gbrain.tar.gz" -C /data gbrain 2>/dev/null || true
+
+  # 4. Clone (or refresh) the state repo via the deploy key
+  log "Refreshing $workdir"
+  rm -rf "$workdir"
+  "${git_auth_env[@]}" git clone -q --depth 50 "$git_auth_url" "$workdir"
+
+  # 5. Stage the new snapshot
+  local snapshot_dir="$workdir/$date"
+  mkdir -p "$snapshot_dir"
+  stage_snapshot_file "$db_file" "$snapshot_dir" "paperclip-db.sql.gz"
+  stage_snapshot_file "$tmp_dir/hermes-profiles.tar.gz" "$snapshot_dir" "hermes-profiles.tar.gz" "no hermes-profiles archive, skipping"
+  stage_snapshot_file "$tmp_dir/gbrain.tar.gz" "$snapshot_dir" "gbrain.tar.gz" "no gbrain archive, skipping"
+
+  cd "$workdir"
+  git add -A
+  if git diff --cached --quiet; then
+    log "No changes to commit (snapshot identical to last)"
+    exit 0
+  fi
+
+  # 6. Commit + push via the deploy key
+  local commit_msg="Pre-deploy snapshot: $date ($brand)"
+  log "Committing: $commit_msg"
+  git -c user.name="agent-state-pre-deploy" \
+      -c user.email="pre-deploy@${brand}.agent" \
+      commit -q -m "$commit_msg"
+
+  log "Pushing to $AGENT_STATE_REPO"
+  "${git_auth_env[@]}" git push -q origin HEAD:main
+
+  log "Done."
+}
+
+if [[ "${AGENT_STATE_TEST_SOURCE_ONLY:-0}" != "1" ]]; then
+  main "$@"
 fi
-
-log "Brand: $BRAND  Repo: $AGENT_STATE_REPO  Date: $DATE"
-
-# 1. Paperclip DB dump
-log "Dumping Paperclip DB"
-paperclipai db:backup --dir "$TMP_DIR" >/dev/null 2>&1
-DB_FILE="$(ls -1t "$TMP_DIR"/paperclip-*.sql.gz | head -1)"
-[[ -f "$DB_FILE" ]] || { log "ERROR: paperclipai db:backup produced no .sql.gz; aborting"; exit 1; }
-
-# 2. Hermes profiles + 3. GBrain  (both live on the shared /data volume)
-log "Taring Hermes profiles + GBrain"
-tar czf "$TMP_DIR/hermes-profiles.tar.gz" \
-  --exclude='hermes/profiles/*/profile-backups' \
-  --exclude='hermes/profiles/*/python-packages' \
-  --exclude='hermes/profiles/*/bin' \
-  --exclude='hermes/profiles/*/lsp' \
-  --exclude='hermes/profiles/*/cache' \
-  --exclude='hermes/profiles/*/audio_cache' \
-  --exclude='*/__pycache__' \
-  -C /data \
-  hermes/profiles hermes/SOUL.md hermes/auth.json hermes/.env hermes/cron hermes/hooks 2>/dev/null || true
-tar czf "$TMP_DIR/gbrain.tar.gz" -C /data gbrain 2>/dev/null || true
-
-# 4. Clone (or refresh) the state repo via the deploy key
-log "Refreshing $WORKDIR"
-rm -rf "$WORKDIR"
-"${git_auth_env[@]}" git clone -q --depth 50 "$git_auth_url" "$WORKDIR"
-
-# 5. Stage the new snapshot
-SNAPSHOT_DIR="$WORKDIR/$DATE"
-mkdir -p "$SNAPSHOT_DIR"
-mv "$DB_FILE" "$SNAPSHOT_DIR/paperclip-db.sql.gz"
-mv "$TMP_DIR/hermes-profiles.tar.gz" "$SNAPSHOT_DIR/hermes-profiles.tar.gz" 2>/dev/null || log "  (no hermes-profiles archive, skipping)"
-mv "$TMP_DIR/gbrain.tar.gz" "$SNAPSHOT_DIR/gbrain.tar.gz" 2>/dev/null || log "  (no gbrain archive, skipping)"
-
-cd "$WORKDIR"
-git add -A
-if git diff --cached --quiet; then
-  log "No changes to commit (snapshot identical to last)"
-  exit 0
-fi
-
-# 6. Commit + push via the deploy key
-COMMIT_MSG="Pre-deploy snapshot: $DATE ($BRAND)"
-log "Committing: $COMMIT_MSG"
-git -c user.name="agent-state-pre-deploy" \
-    -c user.email="pre-deploy@${BRAND}.agent" \
-    commit -q -m "$COMMIT_MSG"
-
-log "Pushing to $AGENT_STATE_REPO"
-"${git_auth_env[@]}" git push -q origin HEAD:main
-
-log "Done."

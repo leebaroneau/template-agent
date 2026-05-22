@@ -48,6 +48,39 @@
 
 set -euo pipefail
 
+log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"; }
+
+file_size_bytes() {
+  stat -c%s "$1" 2>/dev/null || stat -f%z "$1"
+}
+
+stage_snapshot_file() {
+  local source_file="$1"
+  local snapshot_dir="$2"
+  local snapshot_name="$3"
+  local split_bytes="${AGENT_STATE_ARCHIVE_SPLIT_BYTES:-95000000}"
+
+  if [[ ! -f "$source_file" ]]; then
+    log "  skipping $snapshot_name; source file missing"
+    return 0
+  fi
+
+  rm -f "$snapshot_dir/$snapshot_name" "$snapshot_dir/$snapshot_name.part-"*
+
+  local size
+  size="$(file_size_bytes "$source_file")"
+  if (( size > split_bytes )); then
+    log "  splitting $snapshot_name ($size bytes) into ${split_bytes}-byte parts"
+    split -b "$split_bytes" -d -a 4 "$source_file" "$snapshot_dir/$snapshot_name.part-"
+    return 0
+  fi
+
+  mv "$source_file" "$snapshot_dir/$snapshot_name"
+  log "  saved $snapshot_name ($size bytes)"
+}
+
+main() {
+
 # ── Config ─────────────────────────────────────────────────────────────
 ENV_FILE="${AGENT_STATE_ENV_FILE:-/root/agent-state-backup/backup.env}"
 REPO_DIR="${AGENT_STATE_REPO_DIR:-/root/agent-state-backup/repo}"
@@ -71,15 +104,14 @@ fi
 RETENTION_DAYS="${AGENT_STATE_RETENTION_DAYS:-30}"
 DATE="$(date -u +%Y-%m-%d)"
 SNAPSHOT_DIR="$REPO_DIR/$DATE"
-
-log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"; }
+TMP_DIR="$(mktemp -d -t agent-state-nightly-XXXXXX)"
+trap 'rm -rf "$TMP_DIR" "${GIT_ASKPASS_FILE:-}"' EXIT
 
 log "=== Starting backup for brand=$AGENT_STATE_BRAND date=$DATE ==="
 
 git_auth_env=()
 if [[ -n "${AGENT_STATE_TOKEN:-}" ]]; then
   GIT_ASKPASS_FILE="$(mktemp -t agent-state-askpass-XXXXXX)"
-  trap 'rm -f "$GIT_ASKPASS_FILE"' EXIT
   cat > "$GIT_ASKPASS_FILE" <<'ASKPASS'
 #!/usr/bin/env bash
 case "$1" in
@@ -108,16 +140,16 @@ mkdir -p "$SNAPSHOT_DIR"
 log "Dumping Paperclip DB via $PAPERCLIP_CONTAINER"
 docker exec "$PAPERCLIP_CONTAINER" bash -lc 'paperclipai db:backup --dir /tmp >/dev/null 2>&1'
 LATEST_DB="$(docker exec "$PAPERCLIP_CONTAINER" bash -lc 'ls -1t /tmp/paperclip-*.sql.gz | head -1')"
-docker cp "$PAPERCLIP_CONTAINER:$LATEST_DB" "$SNAPSHOT_DIR/paperclip-db.sql.gz"
-log "  saved paperclip-db.sql.gz ($(stat -c%s "$SNAPSHOT_DIR/paperclip-db.sql.gz") bytes)"
+docker cp "$PAPERCLIP_CONTAINER:$LATEST_DB" "$TMP_DIR/paperclip-db.sql.gz"
+stage_snapshot_file "$TMP_DIR/paperclip-db.sql.gz" "$SNAPSHOT_DIR" "paperclip-db.sql.gz"
 
 # ── 2. Hermes profiles + 3. GBrain ─────────────────────────────────────
 log "Taring Hermes profiles + GBrain via $HERMES_CONTAINER"
 docker exec "$HERMES_CONTAINER" bash -lc 'cd /data && tar czf /tmp/hermes-profiles.tar.gz --exclude="hermes/profiles/*/profile-backups" --exclude="hermes/profiles/*/python-packages" --exclude="hermes/profiles/*/bin" --exclude="hermes/profiles/*/lsp" --exclude="hermes/profiles/*/cache" --exclude="hermes/profiles/*/audio_cache" --exclude="*/__pycache__" hermes/profiles hermes/SOUL.md hermes/auth.json hermes/.env hermes/cron hermes/hooks 2>/dev/null; tar czf /tmp/gbrain.tar.gz gbrain 2>/dev/null'
-docker cp "$HERMES_CONTAINER:/tmp/hermes-profiles.tar.gz" "$SNAPSHOT_DIR/hermes-profiles.tar.gz"
-docker cp "$HERMES_CONTAINER:/tmp/gbrain.tar.gz" "$SNAPSHOT_DIR/gbrain.tar.gz"
-log "  saved hermes-profiles.tar.gz ($(stat -c%s "$SNAPSHOT_DIR/hermes-profiles.tar.gz") bytes)"
-log "  saved gbrain.tar.gz ($(stat -c%s "$SNAPSHOT_DIR/gbrain.tar.gz") bytes)"
+docker cp "$HERMES_CONTAINER:/tmp/hermes-profiles.tar.gz" "$TMP_DIR/hermes-profiles.tar.gz"
+docker cp "$HERMES_CONTAINER:/tmp/gbrain.tar.gz" "$TMP_DIR/gbrain.tar.gz"
+stage_snapshot_file "$TMP_DIR/hermes-profiles.tar.gz" "$SNAPSHOT_DIR" "hermes-profiles.tar.gz"
+stage_snapshot_file "$TMP_DIR/gbrain.tar.gz" "$SNAPSHOT_DIR" "gbrain.tar.gz"
 
 # ── 4. Retention sweep ─────────────────────────────────────────────────
 log "Pruning snapshots older than $RETENTION_DAYS days"
@@ -140,3 +172,8 @@ git -c user.name="agent-state-nightly-backup" \
 "${git_auth_env[@]}" git push -q origin HEAD:main
 log "Pushed snapshot for $DATE"
 log "=== Done ==="
+}
+
+if [[ "${AGENT_STATE_TEST_SOURCE_ONLY:-0}" != "1" ]]; then
+  main "$@"
+fi

@@ -15,7 +15,7 @@ The dual container stores all live state (Paperclip DB, Hermes profiles, GBrain 
 
 Both push to the same `<Org>/agent-<brand>` GitHub repo, which holds dated snapshot directories with the Paperclip DB dump, tarred Hermes profiles, and tarred GBrain pglites.
 
-Hermes profile archives intentionally exclude reconstructible dependency/cache folders and nested historical profile backups (`profile-backups`, `python-packages`, `bin`, `lsp`, `cache`, `audio_cache`, `__pycache__`). The state repo should preserve current operational state, not duplicate package installs or old backup material that can push snapshots past GitHub's 100 MB per-file limit.
+Hermes profile archives intentionally exclude reconstructible dependency/cache folders and nested historical profile backups (`profile-backups`, `python-packages`, `bin`, `lsp`, `cache`, `audio_cache`, `__pycache__`). The state repo should preserve current operational state, not duplicate package installs. Any snapshot file above `AGENT_STATE_ARCHIVE_SPLIT_BYTES` is committed as numbered `.part-0000` files so GitHub's 100 MB per-file limit does not block deploys.
 
 ## Uniform repo shape
 
@@ -226,6 +226,12 @@ docker cp paperclip-db.sql.gz <paperclip-container>:/tmp/
 docker exec <paperclip-container> paperclipai db:restore /tmp/paperclip-db.sql.gz
 
 # 3. Restore Hermes profiles + GBrain
+for archive in hermes-profiles.tar.gz gbrain.tar.gz; do
+  if ls "$archive".part-* >/dev/null 2>&1; then
+    cat "$archive".part-* > "$archive"
+  fi
+done
+
 docker cp hermes-profiles.tar.gz <hermes-container>:/data/
 docker cp gbrain.tar.gz <hermes-container>:/data/
 docker exec <hermes-container> bash -c 'cd /data && tar xzf hermes-profiles.tar.gz && tar xzf gbrain.tar.gz'

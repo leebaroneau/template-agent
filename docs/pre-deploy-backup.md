@@ -64,10 +64,15 @@ agent-<brand>/
 ├── 2026-05-22/
 │   ├── paperclip-db.sql.gz
 │   ├── hermes-profiles.tar.gz
-│   └── gbrain.tar.gz
+│   └── gbrain.tar.gz.part-0000
 └── 2026-05-23/
     └── ...
 ```
+
+Files larger than `AGENT_STATE_ARCHIVE_SPLIT_BYTES` are committed as numbered
+`.part-0000` files to stay under GitHub's 100 MB per-file limit. The default
+split size is 95,000,000 bytes. Restore by concatenating matching parts in
+lexical order before running `tar`.
 
 A separate nightly cron on the droplet host (`/root/agent-haverford-backup/nightly-backup.sh` on the Haverford droplet) can co-exist with this pre-deploy hook. Both push to the same state repo; pre-deploy commits and nightly commits land naturally in date order.
 
