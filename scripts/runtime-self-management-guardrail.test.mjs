@@ -13,7 +13,7 @@ async function file(path) {
 test('delegation-protocol carries the Runtime Self-Management Boundaries section', async () => {
   const md = await file('paperclip/delegation-protocol.md');
 
-  assert.match(md, /## 7\. Runtime Self-Management Boundaries/);
+  assert.match(md, /## \d+\. Runtime Self-Management Boundaries/);
   assert.match(md, /hermes gateway restart\|stop\|run\|install/);
   assert.match(md, /systemctl restart hermes-gateway-\*/);
   assert.match(md, /Fix the YAML and restart\.`/);
@@ -29,12 +29,12 @@ test('SOUL.default.md carries the Runtime Self-Management Boundaries block', asy
   assert.match(md, /I can't restart my own gateway/);
 });
 
-test('SOUL.default.md tells the agent the delegation-protocol section 7 binds them', async () => {
+test('SOUL.default.md tells the agent the delegation-protocol guardrail binds them', async () => {
   // This is the link that makes the guardrail propagate to every Paperclip-
   // managed role SOUL (which already reads delegation-protocol.md).
   const md = await file('hermes-runtime/templates/SOUL.default.md');
   assert.match(md, /delegation-protocol\.md/);
-  assert.match(md, /section 7|Runtime Self-Management/);
+  assert.match(md, /Runtime Self-Management/);
 });
 
 test('SOUL.default.md carries the AI Council trigger without enabling moa', async () => {

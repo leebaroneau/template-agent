@@ -36,3 +36,12 @@ test('ai-council protocol defines cost and latency gates', async () => {
   assert.match(md, /Claude Haiku/);
   assert.match(md, /Do not guess a DeepSeek model slug/);
 });
+
+test('delegation protocol teaches managed profiles when to use ai-council', async () => {
+  const md = await file('paperclip/delegation-protocol.md');
+
+  assert.match(md, /## 7\. Cognitive Expansion Engine/);
+  assert.match(md, /Use the `ai-council` skill/);
+  assert.match(md, /Do not use Hermes `moa`/);
+  assert.match(md, /## 8\. Runtime Self-Management Boundaries/);
+});
