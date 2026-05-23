@@ -36,3 +36,12 @@ test('SOUL.default.md tells the agent the delegation-protocol section 7 binds th
   assert.match(md, /delegation-protocol\.md/);
   assert.match(md, /section 7|Runtime Self-Management/);
 });
+
+test('SOUL.default.md carries the AI Council trigger without enabling moa', async () => {
+  const md = await file('hermes-runtime/templates/SOUL.default.md');
+
+  assert.match(md, /## Cognitive Expansion Boundary/);
+  assert.match(md, /Claude Haiku/);
+  assert.match(md, /ai-council/);
+  assert.match(md, /Do not use Hermes `moa`/);
+});

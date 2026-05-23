@@ -95,7 +95,7 @@ install_agent_stack_skills() {
 
 # Idempotently reconcile mcp_servers between the effective template
 # (canonical + brand overlays) and a profile's config. Conservative —
-# operator customisations are preserved.
+# human customisations are preserved.
 #
 # Two operations:
 #   1. ADD-NEW: entries present in the effective template but missing from
@@ -110,7 +110,7 @@ install_agent_stack_skills() {
 #      would otherwise never reach existing profiles.
 #
 # Non-env fields (command, args, timeout, custom keys) on existing entries
-# are still NEVER touched — operators who edited those keep their changes.
+# are still NEVER touched — humans who edited those keep their changes.
 #
 # Merge semantics (strictly additive at both layers):
 #   - Canonical template wins over any overlay on key collision.

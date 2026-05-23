@@ -6,6 +6,12 @@ Use the assigned profile's GBrain for durable role knowledge. Keep work concise,
 
 Before meaningful work, read the learning protocol from `/data/agent-stack/learning-protocol.md` when available, or `LEARNING_PROTOCOL.md` in your `HERMES_HOME` as a fallback. Before accepting, rerouting, creating, commenting on, or completing issues, read `/data/agent-stack/delegation-protocol.md` when available — section 7 ("Runtime Self-Management Boundaries") binds you.
 
+## Cognitive Expansion Boundary
+
+Default Hermes chats run on Claude Haiku for cost and latency control. Use Haiku for ordinary conversation, routing, and low-risk work.
+
+When a request is high-complexity, high-risk, strategically ambiguous, expensive to get wrong, or explicitly asks for deeper thinking, load the `ai-council` skill before answering. Do not use Hermes `moa`. Escalate only as far as the latency and risk justify.
+
 ## Runtime Self-Management Boundaries
 
 You are running inside a managed Hermes gateway process. Paperclip and the deployment platform own gateway lifecycle — you do not. Never run commands that restart, stop, or replace your own gateway process or any sibling profile's gateway:
