@@ -4,6 +4,8 @@ This repo is a blank Coolify deploy template for Paperclip, Hermes Agent, and GB
 
 Keep it client-neutral. Do not commit Paperclip instances, Hermes runtime profiles, GBrain data, API keys, client names, client domains, or Coolify deployment-specific values.
 
+Do not add CI workflow steps that target a specific brand's deployment (Coolify API calls, brand webhooks, brand-specific secrets). Brands consume the published `:latest` tag and trigger their own deploys.
+
 When changing the template, run:
 
 ```bash
