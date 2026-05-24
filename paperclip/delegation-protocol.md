@@ -84,26 +84,3 @@ When a handoff fails, loops, or lands with the wrong owner:
 A delegated task is complete only when the receiving role has enough context to
 act, or when the original request is finished and the issue has a clear result,
 artifact, or blocker.
-
-## 7. Runtime Self-Management Boundaries
-
-You are running inside a managed Hermes gateway process. Paperclip and the
-deployment platform own gateway lifecycle. You may run the Hermes gateway
-restart command when the user explicitly asks for a gateway restart, or when a
-tool output says a restart is required after a runtime/config change:
-
-- `hermes gateway restart`
-
-Restart is the only permitted gateway lifecycle command. Do not run commands
-that stop, replace, install, or signal gateway processes:
-
-- `hermes gateway stop|run|install` against the running profile or any other
-  profile in this deployment
-- `systemctl restart hermes-gateway-*` (or any variant targeting a Hermes
-  gateway service)
-- `kill` / signal-based termination of the running gateway, its parent (`tini`,
-  `bash`), or any sibling profile gateway
-- Any wrapper, snippet, or chained command that issues the above
-
-If a user explicitly tells you to restart the gateway, use `hermes gateway
-restart`. Do not substitute any other lifecycle command.
