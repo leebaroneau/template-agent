@@ -89,14 +89,6 @@ COPY paperclip/patch-paperclip-hermes-defaults.mjs /opt/paperclip/patch-papercli
 COPY paperclip/repair-paperclip-config.mjs /opt/paperclip/repair-paperclip-config.mjs
 COPY paperclip/profile-sync.mjs /opt/paperclip/profile-sync.mjs
 COPY paperclip/narrow-grants.mjs /opt/paperclip/narrow-grants.mjs
-COPY paperclip/patch-hermes-voice-mention-filter.py /opt/paperclip/patch-hermes-voice-mention-filter.py
-
-# Bridge for upstream PR https://github.com/NousResearch/hermes-agent/pull/31340 —
-# patches the installed hermes-agent so Telegram voice notes pass the mention
-# filter in `require_mention` group chats. Idempotent; remove this RUN step
-# (and the COPY above + the script file) once the pinned HERMES_AGENT_REF
-# includes the upstream fix.
-RUN /usr/local/lib/hermes-agent/venv/bin/python /opt/paperclip/patch-hermes-voice-mention-filter.py
 COPY paperclip/mcp-paperclip /opt/paperclip/mcp-paperclip
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     cd /opt/paperclip/mcp-paperclip \
