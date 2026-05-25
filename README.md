@@ -151,11 +151,40 @@ After the stack is deployed (locally or via Coolify) and the containers are runn
 
    Once approved, the `boardApiToken` from step 1 is your live `pcp_board_*` key. **Copy it now into a password manager — the API does not let you retrieve it again later.** Mint additional keys anytime by repeating either flow.
 
-4. **Set `PAPERCLIP_API_KEY=<pcp_board_…>` in env** (Coolify → app → Environment Variables, or local `.env`). This activates the Paperclip MCP server inside Hermes — without a key, every MCP tool call from Hermes will return 401.
+4. **Activate the key — write it to the shared volume** (preferred) or set it as a Coolify env var.
 
-5. **Keep `PROFILE_SYNC_ENABLED=1`** and set `PAPERCLIP_PROFILE_SYNC_API_KEY=<same-key>` to give each Paperclip agent its own isolated Hermes profile, GBrain home, and current Paperclip skill set (see "Profile Sync & Org Chart").
+   **Preferred — write to the shared volume** so the key persists across image rebuilds and is picked up automatically by both services on every restart:
 
-6. **Redeploy / restart** so the env changes land in the container.
+   ```bash
+   # From inside the paperclip container:
+   KEY="pcp_board_<your-token>"
+   mkdir -p /data/agent-stack/profile-sync
+   # Upsert both keys (remove stale blank lines first)
+   sed -i '/^PAPERCLIP_API_KEY=/d; /^PAPERCLIP_PROFILE_SYNC_API_KEY=/d' \
+     /data/agent-stack/profile-sync/profile-sync.env 2>/dev/null || true
+   printf 'PAPERCLIP_API_KEY=%s\nPAPERCLIP_PROFILE_SYNC_API_KEY=%s\n' "$KEY" "$KEY" \
+     >> /data/agent-stack/profile-sync/profile-sync.env
+   ```
+
+   The `paperclip` service sources `/data/agent-stack/profile-sync/profile-sync.env` at startup. The `hermes` service does too (as of this commit) — so both services pick up the key automatically on every container restart without any Coolify env var update.
+
+   **Alternative — set in Coolify env vars** (also works but requires a redeploy each time the key rotates):
+
+   ```
+   PAPERCLIP_API_KEY=<pcp_board_...>
+   PAPERCLIP_PROFILE_SYNC_API_KEY=<same-key>
+   ```
+
+5. **Enable profile sync** if you want each Paperclip agent to get its own isolated Hermes profile and GBrain home (see "Profile Sync & Org Chart"). The `PAPERCLIP_PROFILE_SYNC_API_KEY` written in step 4 already covers this — just flip `PROFILE_SYNC_ENABLED=1` in Coolify.
+
+6. **Restart the `hermes` container** (not a full redeploy) to pick up the key from the volume:
+
+   ```bash
+   # Coolify UI: restart the hermes service only, or:
+   docker compose --env-file .env restart hermes
+   ```
+
+   If you used the Coolify env var approach instead, trigger a full redeploy so the new env is injected.
 
 7. **Use Paperclip as the main interface**, or talk to Hermes through any configured messaging gateway. If you intentionally enable the dashboard with `HERMES_DASHBOARD_ENABLED=1`, you can also use the Hermes dashboard route. Hermes can call Paperclip tools — say *"list paperclip companies"* and the MCP server replies with the live roster.
 
@@ -275,6 +304,18 @@ HERMES_GATEWAY_PROFILES=auto
 
 For single-VM deployments, profile-sync env can live in `/data/agent-stack/profile-sync/profile-sync.env` (root-readable) instead of Coolify env. Override `ORG_MIRROR_ROOT` only if you need the org chart files somewhere other than `/data/agent-stack`.
 
+### Do not override `PAPERCLIP_ALLOWED_HOSTNAMES` in Coolify
+
+The compose builds this value automatically:
+
+```
+paperclip,localhost,127.0.0.1,<PAPERCLIP_HOSTNAME>
+```
+
+The first three entries are the Docker-internal names the `hermes` service uses to call Paperclip (via `http://paperclip:3100`). `PAPERCLIP_HOSTNAME` appends the public domain so browser-originated requests are also accepted.
+
+**If you set `PAPERCLIP_ALLOWED_HOSTNAMES` as a Coolify env var it will override this value entirely**, stripping the internal names and causing every Hermes→Paperclip API call to return `403 Hostname '...' is not allowed`. Leave this variable unset in Coolify — the compose handles it correctly.
+
 ### Coolify routing notes
 
 Coolify renders `docker-compose.yaml` with `$` escaped to `$$` inside the `labels:` block. That means `${PAPERCLIP_HOSTNAME}` in the Traefik labels stays *literal* instead of being substituted — and the same is true for Coolify's own magic vars like `${SERVICE_FQDN_*}` when written into compose labels. Setting `SERVICE_FQDN_HERMES_9119` or `SERVICE_FQDN_HERMES` as an env var does NOT generate routing labels on its own.
@@ -322,13 +363,7 @@ PAPERCLIP_API_KEY              (preferred)
 PAPERCLIP_PROFILE_SYNC_API_KEY (fallback)
 ```
 
-If both are blank the server still starts but every tool call fails with an auth error. Mint a board key once Paperclip is reachable:
-
-```bash
-docker compose --env-file .env exec paperclip paperclipai auth login --api-base http://127.0.0.1:3100
-```
-
-That command prints an approval URL — open it in a browser, sign in, click approve. The CLI then stores a `pcp_board_*` token; copy it into Coolify env as `PAPERCLIP_API_KEY` and redeploy.
+If both are blank the server still starts but every tool call fails with an auth error. Mint a board key once Paperclip is reachable (see "Mint a board API key" in First-Run Flow, step 3), then write it to the shared volume as described in step 4 — the hermes container picks it up on the next restart without a Coolify env var update or full redeploy.
 
 Optional convenience env: set `PAPERCLIP_DEFAULT_COMPANY_ID=<uuid>` so single-company setups don't need to pass `companyId` on every tool call.
 
