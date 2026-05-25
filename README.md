@@ -262,7 +262,7 @@ PAPERCLIP_API_KEY=<pcp_board_...>
 PAPERCLIP_DEFAULT_COMPANY_ID=<uuid>   # optional, single-company convenience
 ```
 
-**Profile sync** (on by default — generates the org chart and gives each Paperclip agent its own isolated Hermes profile and GBrain home):
+**Profile sync** — starts automatically when `PAPERCLIP_PROFILE_SYNC_API_KEY` is set. Generates the org chart and gives each Paperclip agent its own isolated Hermes profile and GBrain home. Set `PROFILE_SYNC_ENABLED=0` to explicitly disable (e.g. local dev without a full Paperclip setup).
 
 ```env
 PROFILE_SYNC_INTERVAL_SEC=60

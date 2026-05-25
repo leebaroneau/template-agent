@@ -24,7 +24,8 @@ services:
       GBRAIN_HOME: /data/gbrain/default
       HERMES_PROFILES: ${HERMES_PROFILES:-default}
       PAPERCLIP_API_URL: http://127.0.0.1:3100
-      PROFILE_SYNC_ENABLED: ${PROFILE_SYNC_ENABLED:-1}
+      # PROFILE_SYNC_ENABLED: not set — profile-sync starts automatically when
+      # PAPERCLIP_PROFILE_SYNC_API_KEY is present. Set PROFILE_SYNC_ENABLED=0 to disable.
       PROFILE_SYNC_INTERVAL_SEC: ${PROFILE_SYNC_INTERVAL_SEC:-60}
       PROFILE_SYNC_DELETE_MODE: ${PROFILE_SYNC_DELETE_MODE:-archive}
       PROFILE_SYNC_MANIFEST_PATH: /data/agent-stack/profile-sync/manifest.json
