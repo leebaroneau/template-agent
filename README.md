@@ -175,9 +175,7 @@ After the stack is deployed (locally or via Coolify) and the containers are runn
    PAPERCLIP_PROFILE_SYNC_API_KEY=<same-key>
    ```
 
-5. **Enable profile sync** if you want each Paperclip agent to get its own isolated Hermes profile and GBrain home (see "Profile Sync & Org Chart"). The `PAPERCLIP_PROFILE_SYNC_API_KEY` written in step 4 already covers this — just flip `PROFILE_SYNC_ENABLED=1` in Coolify.
-
-6. **Restart the `hermes` container** (not a full redeploy) to pick up the key from the volume:
+5. **Restart the `hermes` container** (not a full redeploy) to pick up the key from the volume:
 
    ```bash
    # Coolify UI: restart the hermes service only, or:
@@ -264,10 +262,9 @@ PAPERCLIP_API_KEY=<pcp_board_...>
 PAPERCLIP_DEFAULT_COMPANY_ID=<uuid>   # optional, single-company convenience
 ```
 
-**Required for per-role profile sync:**
+**Profile sync** — starts automatically when `PAPERCLIP_PROFILE_SYNC_API_KEY` is set. Generates the org chart and gives each Paperclip agent its own isolated Hermes profile and GBrain home. Set `PROFILE_SYNC_ENABLED=0` to explicitly disable (e.g. local dev without a full Paperclip setup).
 
 ```env
-PROFILE_SYNC_ENABLED=1
 PROFILE_SYNC_INTERVAL_SEC=60
 PROFILE_SYNC_DELETE_MODE=archive
 PROFILE_SYNC_GRANT_MANAGER_ASSIGN_TASKS=1

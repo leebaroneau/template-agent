@@ -95,10 +95,15 @@ if [[ ! -f /data/instances/default/config.json ]]; then
   runuser -u node -- paperclipai onboard --data-dir /data --bind "${PAPERCLIP_BIND:-lan}" --yes
 fi
 
-if [[ "${PROFILE_SYNC_ENABLED:-0}" =~ ^(1|true|TRUE|yes|YES|on|ON)$ ]]; then
+# Profile-sync is key-gated: starts automatically when PAPERCLIP_PROFILE_SYNC_API_KEY
+# is present. Set PROFILE_SYNC_ENABLED=0 to explicitly disable it (e.g. local dev).
+_sync_key="${PAPERCLIP_PROFILE_SYNC_API_KEY:-${PAPERCLIP_API_KEY:-}}"
+if [[ "${PROFILE_SYNC_ENABLED:-auto}" =~ ^(0|false|FALSE|no|NO|off|OFF)$ ]]; then
+  echo "[agent-stack] Profile-sync disabled (PROFILE_SYNC_ENABLED=0)."
+elif [[ -n "$_sync_key" ]]; then
   echo "[agent-stack] Starting embedded profile-sync loop"
   runuser -u node -- env \
-    PROFILE_SYNC_ENABLED="$PROFILE_SYNC_ENABLED" \
+    PROFILE_SYNC_ENABLED=1 \
     PROFILE_SYNC_INTERVAL_SEC="${PROFILE_SYNC_INTERVAL_SEC:-60}" \
     PROFILE_SYNC_DELETE_MODE="${PROFILE_SYNC_DELETE_MODE:-archive}" \
     PROFILE_SYNC_GRANT_MANAGER_ASSIGN_TASKS="${PROFILE_SYNC_GRANT_MANAGER_ASSIGN_TASKS:-1}" \
@@ -106,7 +111,7 @@ if [[ "${PROFILE_SYNC_ENABLED:-0}" =~ ^(1|true|TRUE|yes|YES|on|ON)$ ]]; then
     PROFILE_SYNC_TEMPLATE_DIR="$PROFILE_SYNC_TEMPLATE_DIR" \
     PAPERCLIP_API_BASE="${PROFILE_SYNC_API_BASE:-http://127.0.0.1:3100}" \
     PAPERCLIP_AGENT_API_URL="${PAPERCLIP_AGENT_API_URL:-http://127.0.0.1:3100}" \
-    PAPERCLIP_PROFILE_SYNC_API_KEY="${PAPERCLIP_PROFILE_SYNC_API_KEY:-}" \
+    PAPERCLIP_PROFILE_SYNC_API_KEY="$_sync_key" \
     PAPERCLIP_API_KEY="${PAPERCLIP_API_KEY:-}" \
     PAPERCLIP_COMPANY_IDS="${PAPERCLIP_COMPANY_IDS:-}" \
     PAPERCLIP_COMPANIES="${PAPERCLIP_COMPANIES:-}" \
@@ -114,6 +119,9 @@ if [[ "${PROFILE_SYNC_ENABLED:-0}" =~ ^(1|true|TRUE|yes|YES|on|ON)$ ]]; then
     HERMES_DATA_ROOT="$HERMES_DATA_ROOT" \
     GBRAIN_DATA_ROOT="$GBRAIN_DATA_ROOT" \
     node /opt/paperclip/profile-sync.mjs loop &
+else
+  echo "[agent-stack] Profile-sync: no API key set, skipping. Set PAPERCLIP_PROFILE_SYNC_API_KEY to activate."
 fi
+unset _sync_key
 
 exec runuser -u node -- paperclipai run --data-dir /data --bind "${PAPERCLIP_BIND:-lan}"
