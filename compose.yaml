@@ -67,6 +67,8 @@ services:
       HERMES_DASHBOARD_SKIP_BUILD: ${HERMES_DASHBOARD_SKIP_BUILD:-1}
       HERMES_GATEWAY_AUTOSTART: ${HERMES_GATEWAY_AUTOSTART:-1}
       HERMES_GATEWAY_PROFILES: ${HERMES_GATEWAY_PROFILES:-auto}
+      HERMES_REPOS_ROOT: /opt/repos
+      HERMES_REPOS: ${HERMES_REPOS:-}
       PAPERCLIP_API_KEY: ${PAPERCLIP_API_KEY:-}
       PAPERCLIP_API_BASE: http://paperclip:3100
       PAPERCLIP_DEFAULT_COMPANY_ID: ${PAPERCLIP_DEFAULT_COMPANY_ID:-}
@@ -75,6 +77,7 @@ services:
       - "9119"
     volumes:
       - paperclip-data:/data
+      - hermes-repos:/opt/repos
     depends_on:
       - paperclip
     healthcheck:
@@ -87,3 +90,4 @@ services:
 
 volumes:
   paperclip-data:
+  hermes-repos:
