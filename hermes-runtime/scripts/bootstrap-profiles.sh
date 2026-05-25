@@ -273,6 +273,11 @@ for raw_profile in "${profiles[@]}"; do
   fi
 
   write_env_file "$profile_home/.env"
+  # Inject PROFILE_NAME so the profile can self-reference without hardcoding its name.
+  # Idempotent — only appends if the key is absent.
+  if ! grep -q "^PROFILE_NAME=" "$profile_home/.env" 2>/dev/null; then
+    echo "PROFILE_NAME=$profile" >> "$profile_home/.env"
+  fi
   install_gbrain_skills "$profile_home"
   install_hermes_bundled_skills "$profile_home"
   install_agent_stack_skills "$profile_home"
