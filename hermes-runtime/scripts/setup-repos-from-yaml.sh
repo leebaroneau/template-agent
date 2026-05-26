@@ -27,7 +27,9 @@ done
 
 [[ -f "$CONFIG_FILE" ]] || { echo "[setup-repos] config not found at $CONFIG_FILE — skipping" >&2; exit 0; }
 
-python3 -c "import yaml" 2>/dev/null || { echo "[setup-repos] ERROR: pyyaml not installed" >&2; exit 1; }
+PYTHON="${HERMES_PYTHON:-/usr/local/lib/hermes-agent/venv/bin/python}"
+[[ -x "$PYTHON" ]] || PYTHON="python3"
+"$PYTHON" -c "import yaml" 2>/dev/null || { echo "[setup-repos] ERROR: pyyaml not installed" >&2; exit 1; }
 
 mkdir -p "$REPOS_ROOT"
 
@@ -39,7 +41,7 @@ fi
 export _SETUP_CONFIG="$CONFIG_FILE"
 export _REPOS_ROOT="$REPOS_ROOT"
 
-CLONE_LIST=$(python3 << 'PYEOF'
+CLONE_LIST=$("$PYTHON" << 'PYEOF'
 import yaml, os
 
 with open(os.environ['_SETUP_CONFIG']) as f:
@@ -87,10 +89,13 @@ while IFS=$'\t' read -r clone_url bare_name; do
     continue
   fi
   echo "[setup-repos] clone: $bare_name"
-  if git clone --bare --quiet "$clone_url" "$bare_path" 2>&1 | sed 's/^/[setup-repos]   /'; then
+  clone_output=$(git clone --bare "$clone_url" "$bare_path" 2>&1) && clone_ok=1 || clone_ok=0
+  [[ -n "$clone_output" ]] && echo "$clone_output" | sed 's/^/[setup-repos]   /'
+  if [[ "$clone_ok" -eq 1 ]]; then
     (( cloned++ )) || true
   else
     echo "[setup-repos] WARN: failed to clone $bare_name" >&2
+    rm -rf "$bare_path" 2>/dev/null || true
     (( failed++ )) || true
   fi
 done <<< "$CLONE_LIST"

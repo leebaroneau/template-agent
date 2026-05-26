@@ -25,12 +25,15 @@ done
 
 [[ -f "$CONFIG_FILE" ]] || { echo "[sync-repos] config not found at $CONFIG_FILE — skipping" >&2; exit 0; }
 
-python3 -c "import yaml" 2>/dev/null || { echo "[sync-repos] ERROR: pyyaml not installed" >&2; exit 1; }
+PYTHON="${HERMES_PYTHON:-/usr/local/lib/hermes-agent/venv/bin/python}"
+# Fall back to system python3 if venv not present
+[[ -x "$PYTHON" ]] || PYTHON="python3"
+"$PYTHON" -c "import yaml" 2>/dev/null || { echo "[sync-repos] ERROR: pyyaml not available (tried $PYTHON)" >&2; exit 1; }
 
 export _SYNC_CONFIG="$CONFIG_FILE"
 export _DATA_ROOT="$DATA_ROOT"
 
-python3 << 'PYEOF'
+"$PYTHON" << 'PYEOF'
 import yaml, os
 
 with open(os.environ['_SYNC_CONFIG']) as f:
@@ -45,6 +48,7 @@ for profile_name, entries in (profiles or {}).items():
     for entry in (entries or []):
         if entry.get('level') == 'rw':
             rw.extend(groups.get(entry.get('group', ''), []))
+    rw = [r.split('/')[-1] if '/' in r else r for r in rw]  # strip org prefix for cross-org repos
     rw = list(dict.fromkeys(rw))  # deduplicate, preserve order
     repos_line = f"REPOS={','.join(rw)}"
 
