@@ -26,7 +26,7 @@ mkdir -p "$HERMES_DATA_ROOT" "$GBRAIN_DATA_ROOT" /home/node/.hermes /opt/work /d
 if [[ ! -e /hermes || -L /hermes ]]; then
   ln -sfn /data /hermes
 fi
-chown -R node:node /data /home/node/.hermes /opt/work
+chown -R node:node /data /home/node/.hermes /opt/work /opt/repos
 
 runuser -u node -- flock /data/.locks/bootstrap-profiles.lock /opt/hermes-runtime/scripts/bootstrap-profiles.sh
 
