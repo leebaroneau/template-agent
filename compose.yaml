@@ -74,6 +74,9 @@ services:
       HERMES_GATEWAY_PROFILES: ${HERMES_GATEWAY_PROFILES:-auto}
       HERMES_REPOS_ROOT: /opt/repos
       HERMES_REPOS: ${HERMES_REPOS:-}
+      # Repo access setup — set GH_TOKEN for private repos; mount repo-access.yml at /config/
+      GH_TOKEN: ${GH_TOKEN:-}
+      REPO_ACCESS_CONFIG: ${REPO_ACCESS_CONFIG:-/config/repo-access.yml}
       PAPERCLIP_API_KEY: ${PAPERCLIP_API_KEY:-}
       # Default to Docker Compose internal service DNS. Operators running in a
       # different topology (e.g. Paperclip on a separate host) can override via env.
