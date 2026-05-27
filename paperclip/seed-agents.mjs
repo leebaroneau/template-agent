@@ -31,7 +31,6 @@ const LEARNING_PROTOCOL_FILE = 'LEARNING_PROTOCOL.md';
 const LEARNING_PROTOCOL_POINTER = [
   `Learning Protocol: At task start and finish, read ${LEARNING_PROTOCOL_PATH}.`,
   `If that shared file is unavailable, read ${LEARNING_PROTOCOL_FILE} in your HERMES_HOME.`,
-  'Use your role-specific GBRAIN_HOME for durable learned summaries; do not crawl all of /data.',
 ].join(' ');
 const DEFAULT_HERMES_TOOLSETS = 'terminal,file,web,mcp';
 
@@ -170,7 +169,6 @@ function adapterConfig(profile) {
     paperclipApiUrl: paperclipAgentApiUrl,
     env: {
       HERMES_HOME: hermesHome,
-      GBRAIN_HOME: `/data/gbrain/${profile}`,
       PAPERCLIP_API_URL: paperclipAgentServerUrl,
     },
   };

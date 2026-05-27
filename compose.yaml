@@ -19,9 +19,7 @@ services:
       BETTER_AUTH_BASE_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
       PORT: "3100"
       HERMES_DATA_ROOT: /data/hermes
-      GBRAIN_DATA_ROOT: /data/gbrain
       HERMES_HOME: /data/hermes
-      GBRAIN_HOME: /data/gbrain/default
       HERMES_PROFILES: ${HERMES_PROFILES:-default}
       PAPERCLIP_API_URL: http://127.0.0.1:3100
       # PROFILE_SYNC_ENABLED: not set — profile-sync starts automatically when
@@ -30,7 +28,7 @@ services:
       PROFILE_SYNC_DELETE_MODE: ${PROFILE_SYNC_DELETE_MODE:-archive}
       PROFILE_SYNC_MANIFEST_PATH: /data/agent-stack/profile-sync/manifest.json
       PROFILE_SYNC_TEMPLATE_DIR: /opt/hermes-runtime/templates
-      PROFILE_SYNC_DEFAULT_COMPANY_SKILLS: ${PROFILE_SYNC_DEFAULT_COMPANY_SKILLS:-gbrain,use-100m-framework}
+      PROFILE_SYNC_DEFAULT_COMPANY_SKILLS: ${PROFILE_SYNC_DEFAULT_COMPANY_SKILLS:-use-100m-framework}
       PROFILE_SYNC_DEFAULT_COMPANY_SKILL_SOURCE_DIR: ${PROFILE_SYNC_DEFAULT_COMPANY_SKILL_SOURCE_DIR:-/opt/hermes-runtime/skills}
       ORG_MIRROR_ROOT: ${ORG_MIRROR_ROOT:-/data/agent-stack}
       PROFILE_SYNC_API_BASE: ${PROFILE_SYNC_API_BASE:-http://127.0.0.1:3100}
@@ -61,9 +59,7 @@ services:
     entrypoint: ["/usr/bin/tini", "--", "/opt/paperclip/hermes-entrypoint.sh"]
     environment:
       HERMES_DATA_ROOT: /data/hermes
-      GBRAIN_DATA_ROOT: /data/gbrain
       HERMES_HOME: /data/hermes
-      GBRAIN_HOME: /data/gbrain/default
       HERMES_PROFILES: ${HERMES_PROFILES:-default}
       HERMES_DASHBOARD_ENABLED: ${HERMES_DASHBOARD_ENABLED:-0}
       HERMES_DASHBOARD_HOST: 0.0.0.0

@@ -2,11 +2,10 @@
 set -euo pipefail
 
 HERMES_DATA_ROOT="${HERMES_DATA_ROOT:-/opt/data/hermes}"
-GBRAIN_DATA_ROOT="${GBRAIN_DATA_ROOT:-/opt/data/gbrain}"
 HERMES_PROFILES="${HERMES_PROFILES:-default}"
 TEMPLATE_DIR="${TEMPLATE_DIR:-/opt/hermes-runtime/templates}"
 
-mkdir -p "$HERMES_DATA_ROOT/profiles" "$GBRAIN_DATA_ROOT"
+mkdir -p "$HERMES_DATA_ROOT/profiles"
 
 write_env_file() {
   local env_file="$1"
@@ -27,26 +26,6 @@ write_env_file() {
   } > "$env_file"
 }
 
-install_gbrain_skills() {
-  local profile_home="$1"
-  local gbrain_source="${GBRAIN_SKILLS_SOURCE:-/opt/gbrain/skills}"
-  local gbrain_dest="$profile_home/skills/gbrain"
-
-  if [[ ! -d "$gbrain_source" ]]; then
-    return 0
-  fi
-
-  mkdir -p "$gbrain_dest"
-  for skill_dir in "$gbrain_source"/*; do
-    [[ -d "$skill_dir" && -f "$skill_dir/SKILL.md" ]] || continue
-    local name
-    name="$(basename "$skill_dir")"
-    if [[ -e "$gbrain_dest/$name" && ! -L "$gbrain_dest/$name" ]]; then
-      continue
-    fi
-    ln -sfn "$skill_dir" "$gbrain_dest/$name"
-  done
-}
 
 install_hermes_bundled_skills() {
   local profile_home="$1"
@@ -70,7 +49,7 @@ install_hermes_bundled_skills() {
 }
 
 # Symlink agent-stack-shipped skills (e.g. using-paperclip) into every
-# Hermes profile's skills/agent-stack/ directory. Mirrors install_gbrain_skills
+# Hermes profile's skills/agent-stack/ directory.
 # pattern. Source dir is baked into the image at /opt/hermes-runtime/skills/.
 install_agent_stack_skills() {
   local profile_home="$1"
@@ -246,9 +225,8 @@ for raw_profile in "${profiles[@]}"; do
   else
     profile_home="$HERMES_DATA_ROOT/profiles/$profile"
   fi
-  gbrain_home="$GBRAIN_DATA_ROOT/$profile"
 
-  mkdir -p "$profile_home" "$gbrain_home"
+  mkdir -p "$profile_home"
 
   if [[ ! -f "$profile_home/config.yaml" ]]; then
     cp "$TEMPLATE_DIR/config.yaml" "$profile_home/config.yaml"
@@ -278,14 +256,8 @@ for raw_profile in "${profiles[@]}"; do
   if ! grep -q "^PROFILE_NAME=" "$profile_home/.env" 2>/dev/null; then
     echo "PROFILE_NAME=$profile" >> "$profile_home/.env"
   fi
-  install_gbrain_skills "$profile_home"
   install_hermes_bundled_skills "$profile_home"
   install_agent_stack_skills "$profile_home"
-
-  if [[ ! -f "$gbrain_home/.gbrain/config.json" ]]; then
-    GBRAIN_HOME="$gbrain_home" gbrain init --pglite
-    GBRAIN_HOME="$gbrain_home" gbrain config set search.mode conservative >/dev/null 2>&1 || true
-  fi
 done
 
 # Sweep any profile homes profile-sync may have created at runtime (per-role
