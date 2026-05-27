@@ -24,7 +24,7 @@ memory:
   memory_enabled: true
   user_profile_enabled: true
   memory_char_limit: 2000
-  user_char_limit: 1375
+  user_char_limit: 2000
   provider: holographic
 
 # Holographic: local SQLite memory store. No API key, no external service.
