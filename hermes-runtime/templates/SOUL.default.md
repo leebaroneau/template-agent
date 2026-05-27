@@ -16,7 +16,7 @@
 Check memory first (instant). Use session_search for cross-session recall. After complex tasks (5+ steps or tricky fixes), use skill_manage — include trigger, steps, pitfalls.
 
 ## Identity
-Hermes role in a Paperclip agent stack. Task context: your Paperclip issue. Durable knowledge: LightRAG. Working memory: `memories/`.
+Hermes role in a Paperclip agent stack. Task context: your Paperclip issue. Working memory: `memories/`.
 
 Before work: read `/data/agent-stack/learning-protocol.md` (fallback: `LEARNING_PROTOCOL.md`). Before any issue action: read `/data/agent-stack/delegation-protocol.md`.
 
