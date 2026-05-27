@@ -31,7 +31,6 @@ const HERMES_MODEL_MODE_PAPERCLIP_DEFAULT = 'paperclip-default';
 const DEFAULT_COMPANY_SKILL_SOURCE_DIR = '/opt/hermes-runtime/skills';
 const DEFAULT_HERMES_TOOLSETS = Object.freeze(['terminal', 'file', 'web', 'mcp']);
 const DEFAULT_COMPANY_SKILL_SLUGS = Object.freeze([
-  'gbrain',
   'use-100m-framework',
   'using-paperclip',
   'paperclip-org-structure',
@@ -56,7 +55,6 @@ const LEARNING_PROTOCOL_FILE = 'LEARNING_PROTOCOL.md';
 const LEARNING_PROTOCOL_POINTER = [
   `Learning Protocol: At task start and finish, read ${LEARNING_PROTOCOL_PATH}.`,
   `If that shared file is unavailable, read ${LEARNING_PROTOCOL_FILE} in your HERMES_HOME.`,
-  'Use your role-specific GBRAIN_HOME for durable learned summaries; do not crawl all of /data.',
 ].join(' ');
 const HERMES_TEMPLATE_SKIP_DIRS = new Set([
   'profiles',
@@ -82,16 +80,6 @@ const HERMES_TEMPLATE_SKIP_FILES = new Set([
   'state.db',
 ]);
 const HERMES_SQLITE_SIDECARE_RE = /^(?:state|kanban)\.db-(?:journal|shm|wal)$/;
-const GBRAIN_TEMPLATE_PATHS = [
-  'skills',
-  '.gbrain/skills',
-  '.gbrain/prompts',
-  '.gbrain/conventions',
-  'AGENTS.md',
-  'RESOLVER.md',
-  'gbrain.yml',
-  'gbrain.yaml',
-];
 
 // Canonical list of Hermes well-known subdirs, mirroring upstream
 // hermes_cli/config.py:ensure_hermes_home(). Pre-creating these with stable
@@ -130,7 +118,6 @@ export function buildManagedAgentPayload({
   companyName,
   paperclipAgentServerUrl = DEFAULT_AGENT_API_URL,
   hermesDataRoot = '/data/hermes',
-  gbrainDataRoot = '/data/gbrain',
   hermesModelConfig,
   hermesModelMode = HERMES_MODEL_MODE_INHERIT,
   capabilityContext,
@@ -148,7 +135,6 @@ export function buildManagedAgentPayload({
 
   const paperclipServerUrl = withoutApiSuffix(paperclipAgentServerUrl);
   const hermesHome = join(hermesDataRoot, 'profiles', profileSlug);
-  const gbrainHome = join(gbrainDataRoot, profileSlug);
   const existingConfig = agent.adapterConfig && typeof agent.adapterConfig === 'object'
     ? agent.adapterConfig
     : {};
@@ -187,7 +173,6 @@ export function buildManagedAgentPayload({
     env: {
       ...existingEnv,
       HERMES_HOME: hermesHome,
-      GBRAIN_HOME: gbrainHome,
       PAPERCLIP_API_URL: paperclipServerUrl,
     },
   };
@@ -206,7 +191,6 @@ export function buildManagedAgentPayload({
       hermesProfile: profileSlug,
       agentStackProfileSlug: profileSlug,
       agentStackHermesHome: hermesHome,
-      agentStackGbrainHome: gbrainHome,
       managedBy: MANAGED_BY,
     },
   };
@@ -402,25 +386,20 @@ function roleRoutingScope(agent) {
 export async function ensureProfileHomes({
   profileSlug,
   hermesDataRoot = '/data/hermes',
-  gbrainDataRoot = '/data/gbrain',
   templateDir = DEFAULT_TEMPLATE_DIR,
   configSourcePath,
-  initGbrain = true,
 }) {
   assertSafeSlug(profileSlug);
 
   const hermesHome = profileSlug === 'default'
     ? hermesDataRoot
     : join(hermesDataRoot, 'profiles', profileSlug);
-  const gbrainHome = join(gbrainDataRoot, profileSlug);
 
   await mkdir(hermesHome, { recursive: true });
-  await mkdir(gbrainHome, { recursive: true });
   await ensureHermesSubdirs(hermesHome);
 
   if (profileSlug !== 'default') {
     await cloneDefaultHermesProfile({ hermesDataRoot, hermesHome });
-    await cloneDefaultGbrainTemplate({ gbrainDataRoot, gbrainHome });
   }
 
   // Always (re)install bundled Hermes skills so existing broken profiles self-heal.
@@ -471,16 +450,8 @@ export async function ensureProfileHomes({
   await copyIfSourceExists(join(hermesDataRoot, '.env'), join(hermesHome, '.env'));
   await writeProviderEnvFile(join(hermesHome, '.env'));
 
-  if (initGbrain && !(await exists(join(gbrainHome, '.gbrain', 'config.json')))) {
-    await runCommand('gbrain', ['init', '--pglite'], { GBRAIN_HOME: gbrainHome });
-    await runCommand('gbrain', ['config', 'set', 'search.mode', 'conservative'], {
-      GBRAIN_HOME: gbrainHome,
-    }, { allowFailure: true });
-  }
-
   return {
     hermesHome,
-    gbrainHome,
     modelConfig: await readHermesModelConfig(join(hermesHome, 'config.yaml')),
   };
 }
@@ -488,18 +459,15 @@ export async function ensureProfileHomes({
 export async function retireProfileHomes({
   profileSlug,
   hermesDataRoot = '/data/hermes',
-  gbrainDataRoot = '/data/gbrain',
   deleteMode = 'archive',
 }) {
   assertSafeSlug(profileSlug);
   if (profileSlug === 'default' || deleteMode === 'ignore') return;
 
   const hermesHome = join(hermesDataRoot, 'profiles', profileSlug);
-  const gbrainHome = join(gbrainDataRoot, profileSlug);
 
   if (deleteMode === 'purge') {
     await rm(hermesHome, { recursive: true, force: true });
-    await rm(gbrainHome, { recursive: true, force: true });
     return;
   }
 
@@ -509,7 +477,6 @@ export async function retireProfileHomes({
 
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   await moveIfExists(hermesHome, join(hermesDataRoot, 'archive', `${profileSlug}-${stamp}`));
-  await moveIfExists(gbrainHome, join(gbrainDataRoot, 'archive', `${profileSlug}-${stamp}`));
 }
 
 export async function reconcileAgents({
@@ -526,10 +493,8 @@ export async function reconcileAgents({
   deleteMode = 'archive',
   paperclipAgentServerUrl = DEFAULT_AGENT_API_URL,
   hermesDataRoot = '/data/hermes',
-  gbrainDataRoot = '/data/gbrain',
   templateDir = DEFAULT_TEMPLATE_DIR,
   orgMirrorRoot = DEFAULT_ORG_MIRROR_ROOT,
-  initGbrain = true,
   grantManagerAssignTasks = true,
   hermesModelMode = HERMES_MODEL_MODE_INHERIT,
   defaultCompanySkills = [],
@@ -640,9 +605,7 @@ export async function reconcileAgents({
         const homes = await ensureHomes({
           profileSlug,
           hermesDataRoot,
-          gbrainDataRoot,
           templateDir,
-          initGbrain,
         });
         provisioned += 1;
 
@@ -657,7 +620,6 @@ export async function reconcileAgents({
           companyName,
           paperclipAgentServerUrl,
           hermesDataRoot,
-          gbrainDataRoot,
           hermesModelConfig: homes.modelConfig,
           hermesModelMode: normalizedHermesModelMode,
           capabilityContext,
@@ -675,7 +637,6 @@ export async function reconcileAgents({
           agentName: agent.name,
           profileSlug,
           hermesHome: homes.hermesHome || payload.metadata.agentStackHermesHome,
-          gbrainHome: homes.gbrainHome || payload.metadata.agentStackGbrainHome,
           createdAt: previousEntry?.createdAt || now,
           lastSeenAt: now,
         });
@@ -705,7 +666,6 @@ export async function reconcileAgents({
     await retireHomes({
       ...entry,
       hermesDataRoot,
-      gbrainDataRoot,
       deleteMode,
     });
     retired += 1;
@@ -1127,19 +1087,6 @@ function isHermesRuntimeTemplateFile(relativePath) {
     || fileName.endsWith('.log');
 }
 
-async function cloneDefaultGbrainTemplate({ gbrainDataRoot, gbrainHome }) {
-  const defaultGbrainHome = join(gbrainDataRoot, 'default');
-  if (defaultGbrainHome === gbrainHome || !(await exists(defaultGbrainHome))) return;
-
-  for (const relativePath of GBRAIN_TEMPLATE_PATHS) {
-    await copyTreeMissing(
-      join(defaultGbrainHome, ...relativePath.split('/')),
-      join(gbrainHome, ...relativePath.split('/')),
-      () => false,
-    );
-  }
-}
-
 async function installBundledHermesSkills(hermesHome) {
   const src = process.env.HERMES_BUNDLED_SKILLS_SOURCE || '/usr/local/lib/hermes-agent/skills';
   if (!(await exists(src))) return;
@@ -1448,10 +1395,8 @@ async function runOnceFromEnv() {
     deleteMode: envValue('PROFILE_SYNC_DELETE_MODE', 'archive'),
     paperclipAgentServerUrl: envValue('PAPERCLIP_AGENT_API_URL', DEFAULT_AGENT_API_URL),
     hermesDataRoot: envValue('HERMES_DATA_ROOT', '/data/hermes'),
-    gbrainDataRoot: envValue('GBRAIN_DATA_ROOT', '/data/gbrain'),
     templateDir: envValue('PROFILE_SYNC_TEMPLATE_DIR', DEFAULT_TEMPLATE_DIR),
     orgMirrorRoot: envValue('ORG_MIRROR_ROOT', DEFAULT_ORG_MIRROR_ROOT),
-    initGbrain: !envBool('PROFILE_SYNC_SKIP_GBRAIN_INIT', false),
     grantManagerAssignTasks: envBool('PROFILE_SYNC_GRANT_MANAGER_ASSIGN_TASKS', true),
     hermesModelMode: envValue('PROFILE_SYNC_HERMES_MODEL_MODE', HERMES_MODEL_MODE_INHERIT),
     defaultCompanySkills,
