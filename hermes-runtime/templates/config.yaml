@@ -25,6 +25,12 @@ memory:
   user_profile_enabled: true
   memory_char_limit: 2200
   user_char_limit: 1375
+  provider: lightrag
+  lightrag:
+    # Local embeddings — no API key required. Hermes lazy-installs sentence-transformers.
+    # Override llm_model to match your deployment's primary model provider.
+    llm_model: google/gemini-3.1-flash
+    embedding_model: sentence-transformers/all-MiniLM-L6-v2
 
 # Context engine: use compressor to auto-summarise old messages when context fills.
 # Fires at 50% of context window; retains last 20 messages verbatim; targets 20%
