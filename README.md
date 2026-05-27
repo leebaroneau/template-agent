@@ -1,8 +1,8 @@
 # Template Agent
 
-Blank Coolify-ready template for running Paperclip with Hermes Agent and GBrain.
+Blank Coolify-ready template for running Paperclip with Hermes Agent.
 
-This repo is intentionally client-neutral. It should contain the deploy recipe only. Paperclip projects, Hermes profiles, GBrain stores, API keys, and client data are created at runtime inside the Coolify volume mounted at `/data`.
+This repo is intentionally client-neutral. It should contain the deploy recipe only. Paperclip projects, Hermes profiles, API keys, and client data are created at runtime inside the Coolify volume mounted at `/data`.
 
 ## ⚠️ For Agents (Claude, Codex, any LLM editing this repo) — Read First
 
@@ -41,15 +41,9 @@ hermes CLI runs locally inside the paperclip container
        │
        ▼
        HERMES_HOME=/data/hermes/profiles/<company-role>   (per-agent profile)
-       │
-       ▼
-gbrain CLI for memory + knowledge
-       │
-       ▼
-       GBRAIN_HOME=/data/gbrain/<company-role>            (per-agent brain)
 ```
 
-One image runs two services. Paperclip orchestrates and is the only default public UI. The Hermes service stays headless by default so profile bootstrap and gateway autostart can run without exposing a second browser UI. Both services share `/data`, so memories, skills, and the org chart are visible from either side.
+One image runs two services. Paperclip orchestrates and is the only default public UI. The Hermes service stays headless by default so profile bootstrap and gateway autostart can run without exposing a second browser UI. Both services share `/data`, so skills and the org chart are visible from either side.
 
 The Paperclip MCP server (see below) closes the loop: Hermes-side agents can file and update Paperclip issues without leaving the conversation.
 
@@ -70,9 +64,6 @@ Everything persistent lives under `/data`, mounted from the `paperclip-data` Doc
 | `/data/hermes/` | Default Hermes profile (config, skills, kanban, memory) |
 | `/data/hermes/profiles/<company-role>/` | Per-agent isolated Hermes profile (auto-created by profile-sync) |
 | `/data/hermes/archive/` | Archived profiles for terminated agents (`PROFILE_SYNC_DELETE_MODE=archive`) |
-| `/data/gbrain/default/` | Default GBrain home (reusable skills source) |
-| `/data/gbrain/<company-role>/` | Per-agent isolated GBrain (memory, knowledge pages) |
-| `/data/gbrain/archive/` | Archived GBrain homes for terminated agents |
 | `/data/agent-stack/important-information-index.md` | Shared human-maintained index (see below) |
 | `/data/agent-stack/learning-protocol.md` | Shared learning protocol (see below) |
 | `/data/agent-stack/delegation-protocol.md` | Shared delegation contract (see below) |
@@ -221,7 +212,7 @@ Use Coolify's Git integration or deploy webhook for deploys, but keep the deploy
 TEMPLATE_AGENT_IMAGE=ghcr.io/leebaroneau/template-agent:sha-$SOURCE_COMMIT
 ```
 
-Leave Coolify's **Literal** toggle off for this variable so `$SOURCE_COMMIT` expands to the commit being deployed. GitHub Actions publishes `sha-<commit>` on every push to `main`. Coolify should not build the Paperclip/Hermes/GBrain image on the production host.
+Leave Coolify's **Literal** toggle off for this variable so `$SOURCE_COMMIT` expands to the commit being deployed. GitHub Actions publishes `sha-<commit>` on every push to `main`. Coolify should not build the Paperclip/Hermes image on the production host.
 
 Do not let Coolify auto-deploy a pushed commit before the GitHub image workflow has finished. The safe sequence is:
 
@@ -262,14 +253,14 @@ PAPERCLIP_API_KEY=<pcp_board_...>
 PAPERCLIP_DEFAULT_COMPANY_ID=<uuid>   # optional, single-company convenience
 ```
 
-**Profile sync** — starts automatically when `PAPERCLIP_PROFILE_SYNC_API_KEY` is set. Generates the org chart and gives each Paperclip agent its own isolated Hermes profile and GBrain home. Set `PROFILE_SYNC_ENABLED=0` to explicitly disable (e.g. local dev without a full Paperclip setup).
+**Profile sync** — starts automatically when `PAPERCLIP_PROFILE_SYNC_API_KEY` is set. Generates the org chart and gives each Paperclip agent its own isolated Hermes profile. Set `PROFILE_SYNC_ENABLED=0` to explicitly disable (e.g. local dev without a full Paperclip setup).
 
 ```env
 PROFILE_SYNC_INTERVAL_SEC=60
 PROFILE_SYNC_DELETE_MODE=archive
 PROFILE_SYNC_GRANT_MANAGER_ASSIGN_TASKS=1
 PROFILE_SYNC_HERMES_MODEL_MODE=inherit
-PROFILE_SYNC_DEFAULT_COMPANY_SKILLS=gbrain,use-100m-framework
+PROFILE_SYNC_DEFAULT_COMPANY_SKILLS=use-100m-framework
 PAPERCLIP_PROFILE_SYNC_API_KEY=<pcp_board_...>   # same key as PAPERCLIP_API_KEY is fine
 ```
 
@@ -279,7 +270,7 @@ By default, profile sync writes each managed `hermes_local` agent's `adapterConf
 
 Profile sync also keeps baseline runtime skills in Paperclip's company skill
 list. `PROFILE_SYNC_DEFAULT_COMPANY_SKILLS` defaults to
-`gbrain,use-100m-framework`; for each listed slug, profile-sync reads
+`use-100m-framework`; for each listed slug, profile-sync reads
 `/opt/hermes-runtime/skills/<slug>/SKILL.md`, creates the company skill if it is
 missing, then uses the Paperclip company skill list as the desired skill set for
 managed Hermes roles. Existing company skills are never patched or replaced, so
@@ -383,7 +374,7 @@ Overlay errors (malformed YAML, missing `mcp_servers` key, non-dict `mcp_servers
 
 ### Bundled skill: `using-paperclip`
 
-The MCP server provides typed tools. The bundled `using-paperclip` Hermes skill provides *behaviour* — when and how agents should reach for those tools. It lives at `hermes-runtime/skills/using-paperclip/SKILL.md` and is symlinked into every Hermes profile's `skills/agent-stack/` directory by `bootstrap-profiles.sh` (same pattern as the upstream GBrain skills).
+The MCP server provides typed tools. The bundled `using-paperclip` Hermes skill provides *behaviour* — when and how agents should reach for those tools. It lives at `hermes-runtime/skills/using-paperclip/SKILL.md` and is symlinked into every Hermes profile's `skills/agent-stack/` directory by `bootstrap-profiles.sh`.
 
 The skill teaches agents to:
 
@@ -391,7 +382,7 @@ The skill teaches agents to:
 - Post status comments at meaningful milestones via `paperclip_comment_on_issue`
 - File subtasks as child issues rather than burying them in a comment
 - Use `@AgentName` mentions in comments to wake the right peer on blockers
-- Mark issues `done` with a summary + GBrain page slug at finish
+- Mark issues `done` with a summary at finish
 
 Without this skill, the MCP tools still work — but agents only call them when a user explicitly asks. With the skill, agents treat Paperclip issue tracking as a first-class part of their loop.
 
@@ -404,7 +395,7 @@ The `paperclip` container's entrypoint runs four small Node patches against Pape
 | Patch | What it changes |
 |---|---|
 | `patch-paperclip-hermes-defaults.mjs` | When Paperclip creates a `hermes_local` agent, inject `HERMES_MODEL` / `HERMES_PROVIDER` defaults from the Hermes profile config so newly-hired agents don't fall back to the bundled adapter's hardcoded Anthropic model. |
-| `patch-hermes-adapter-env.mjs` | Unwrap Paperclip's env-binding objects when passing to the Hermes child process. Without this, `HERMES_HOME`, `GBRAIN_HOME`, and `PAPERCLIP_API_URL` reach Hermes as objects instead of strings. |
+| `patch-hermes-adapter-env.mjs` | Unwrap Paperclip's env-binding objects when passing to the Hermes child process. Without this, `HERMES_HOME` and `PAPERCLIP_API_URL` reach Hermes as objects instead of strings. |
 | `patch-hermes-adapter-skills-home.mjs` | Rewrite `hermes-paperclip-adapter`'s `listSkills` so it scans `<HERMES_HOME>/skills/` (instead of always `$HOME/.hermes/skills/`) and follows symlinks at both the category and item levels. Without this, every per-role profile that profile-sync creates reports 0 skills in Paperclip's UI/API even though Hermes itself loads them fine. |
 | `patch-paperclip-company-prefix.mjs` | Relax Paperclip's company URL-key prefix constraints to allow the slugs the agent stack uses. |
 
@@ -430,43 +421,10 @@ node paperclip/seed-agents.mjs
 
 The script POSTs or PATCHes a single `Hermes` agent per company with:
 - `runtimeConfig.heartbeat.enabled: false` (wake on demand, not on a timer)
-- `adapterConfig.env` pointing to the company-specific `HERMES_HOME` and `GBRAIN_HOME` paths
+- `adapterConfig.env` pointing to the company-specific `HERMES_HOME` path
 - `capabilities` pointing the agent at the shared delegation protocol and org chart
 
 Re-running is safe: existing agents are patched, not duplicated.
-
-## GBrain Skills
-
-GBrain skills are installed into Hermes profiles and GBrain homes through two separate paths — both fire automatically, you don't need to wire anything up.
-
-The template also ships a small `gbrain` runtime skill at
-`hermes-runtime/skills/gbrain/SKILL.md`. Profile sync creates the matching
-Paperclip company skill by default, then syncs the company skill list into each
-managed role. That keeps Paperclip as the source of truth while Hermes still
-loads the actual skill file from the profile.
-
-**Bootstrap-time (every container start, every Hermes profile including `default`).**
-The `paperclip` entrypoint runs `bootstrap-profiles.sh`, which for each profile in `HERMES_PROFILES` (just `default` out of the box) symlinks every skill from `/opt/gbrain/skills/` (baked into the image from the upstream GBrain repo) into:
-
-```text
-/data/hermes/skills/gbrain/<skill-name>            # default profile
-/data/hermes/profiles/<company-role>/skills/gbrain/<skill-name>  # per-role
-```
-
-Because they're symlinks, upgrading GBrain (rebuilding the image with a newer `GBRAIN_REF`) makes every profile pick up the new skills with no manual intervention. Override the source path with `GBRAIN_SKILLS_SOURCE=/some/other/dir` if needed.
-
-**Profile-sync-time (per-role GBrain home creation).**
-When profile-sync provisions a new per-role GBrain home, it copies (NOT symlinks) these paths from `/data/gbrain/default/` into the new home so each role starts with the same skill set:
-
-```text
-skills/                   # user-installed GBrain skills
-.gbrain/skills/           # internal GBrain skills
-.gbrain/prompts/
-.gbrain/conventions/
-AGENTS.md, RESOLVER.md, gbrain.yml
-```
-
-User-added skills you drop into `/data/gbrain/default/skills/` after the stack is up are picked up by the next profile-sync iteration. The default GBrain database and knowledge pages are NOT copied — memory stays isolated per role.
 
 ## 100M Framework Learning Loop
 
@@ -479,7 +437,7 @@ Paperclip the control-plane source of truth for whether managed roles should use
 it.
 
 Company agents use the skill to apply the shared `$100M` framework and write
-sanitized `100m-field-learning` proposals into their role-specific GBrain homes.
+sanitized `100m-field-learning` proposals into their memories.
 Promotion is centralized: company profiles do not edit shared framework doctrine
 directly. See [docs/100m-framework-learning-loop.md](docs/100m-framework-learning-loop.md)
 for the pull model, promotion classes, and personal-Hermes curator cron.
@@ -493,14 +451,14 @@ trees, routine setup issues, and escalation paths.
 
 The shared EOS doctrine stays outside this blank template at
 `00_resources/frameworks/eos-framework/`. Company agents write sanitized
-`eos-field-learning` proposals into their role-specific GBrain homes when work
+`eos-field-learning` proposals into their memories when work
 produces reusable improvements. If the current Paperclip tool surface does not
 include routine creation, agents file a routine setup issue instead of claiming
 that the routine exists.
 
 ## Profile Sync & Org Chart
 
-The `paperclip` container can run an embedded reconciliation loop that mirrors Paperclip's roster into per-role Hermes profiles, GBrain homes, and adapter skill-sync state. It is enabled in the generated Coolify env; set the API key after first-run auth:
+The `paperclip` container can run an embedded reconciliation loop that mirrors Paperclip's roster into per-role Hermes profiles and adapter skill-sync state. It is enabled in the generated Coolify env; set the API key after first-run auth:
 
 ```env
 PROFILE_SYNC_ENABLED=1
@@ -513,21 +471,17 @@ Every `hermes_local` Paperclip agent gets:
 
 ```text
 Hermes profile: /data/hermes/profiles/<company-role>
-GBrain home:    /data/gbrain/<company-role>
 Skill sync:     adapterConfig.paperclipSkillSync.desiredSkills
 Toolsets:       adapterConfig.toolsets includes terminal,file,web,mcp
 ```
 
-The profile slug is stored on the Paperclip agent's metadata, so company or role renames don't move existing memories.
+The profile slug is stored on the Paperclip agent's metadata, so company or role renames don't move existing profiles.
 
 New profile homes inherit the default profile's reusable setup:
 - `/data/hermes/*` is copied except runtime profile/archive/cache/log folders
-- `/data/gbrain/default/skills` and `/data/gbrain/default/.gbrain/skills` are copied when present
-
-The default GBrain database, config, and knowledge pages are **not** copied — reusable skills are shared, but memory stays isolated per role.
 
 When an agent disappears from a successfully-scanned company:
-- `archive` mode (default): folders move under `/data/hermes/archive/` and `/data/gbrain/archive/`
+- `archive` mode (default): folders move under `/data/hermes/archive/`
 - `purge` mode: permanent deletion
 
 **Org chart mirroring.** Each sync iteration also writes the current Paperclip org chart to:
@@ -589,7 +543,7 @@ The audit fails if the image contains runtime state under `/data`, Lee/client de
 
 The Dockerfile deliberately cleans `/data` during build. Runtime data appears only after a container starts with the `paperclip-data` volume mounted.
 
-The default Hermes config is intentionally minimal — only the Paperclip MCP server is wired in (see the "Paperclip MCP Server" section above). The template bootstraps neutral profile files, installs GBrain skills into Hermes profiles, and creates a separate GBrain home for each synced role (see "Profile Sync & Org Chart" above).
+The default Hermes config is intentionally minimal — only the Paperclip MCP server is wired in (see the "Paperclip MCP Server" section above). The template bootstraps neutral profile files into Hermes profiles for each synced role (see "Profile Sync & Org Chart" above).
 
 ## Backups
 
@@ -599,7 +553,6 @@ What's worth backing up:
 
 - `/data/instances/` — Paperclip companies, agents, kanban, sessions.
 - `/data/hermes/` — Hermes profiles, config, kanban DB.
-- `/data/gbrain/` — GBrain pages per role (the actual knowledge base).
 - `/data/agent-stack/` — protocols, org-chart, profile-sync state.
 
 ### Recommended: nightly `restic` to Backblaze B2
@@ -689,13 +642,11 @@ Use this shared runtime file as the human-maintained index for important client 
 The `paperclip` service seeds the file if it does not already exist. It will not
 overwrite an existing index.
 
-Keep high-value pointers here: key Paperclip projects, source paths under `/data/instances`, role-specific GBrain pages, credentials locations, decisions, client conventions, and anything agents should check before starting broad work. The index should point to durable sources rather than duplicating large content.
+Keep high-value pointers here: key Paperclip projects, source paths under `/data/instances`, credentials locations, decisions, client conventions, and anything agents should check before starting broad work. The index should point to durable sources rather than duplicating large content.
 
 ## Learning Protocol
 
-The stack includes a task-scoped learning protocol. It is not a background crawler
-and it does not wire GBrain MCP into the blank Hermes config. Agents use the
-existing `gbrain` CLI with their role-specific `GBRAIN_HOME`.
+The stack includes a task-scoped learning protocol. It is not a background crawler.
 
 At container startup, the `paperclip` service installs the shared protocol into:
 
@@ -717,11 +668,10 @@ Synced role profile homes receive:
 
 The learning loop is:
 
-1. At task start, search/query the role's own GBrain.
+1. At task start, consult the shared protocols and index.
 2. Inspect only relevant Paperclip files under `/data/instances`.
 3. Use `/data/agent-stack/important-information-index.md` for high-value pointers.
-4. At task end, write concise durable learning into the role's own GBrain.
-5. Leave the GBrain page slug in the Paperclip issue or final answer.
+4. At task end, update the shared index if you discovered a valuable pointer.
 
 ## Delegation Protocol
 
@@ -755,4 +705,4 @@ To reset a local test install:
 docker compose --env-file .env.example down -v
 ```
 
-Do not commit generated runtime folders such as `data/`, `instances/`, `hermes/`, or `gbrain/`.
+Do not commit generated runtime folders such as `data/`, `instances/`, or `hermes/`.

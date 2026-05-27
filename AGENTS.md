@@ -1,8 +1,8 @@
 # AGENTS.md
 
-This repo is a blank Coolify deploy template for Paperclip, Hermes Agent, and GBrain.
+This repo is a blank Coolify deploy template for Paperclip and Hermes Agent.
 
-Keep it client-neutral. Do not commit Paperclip instances, Hermes runtime profiles, GBrain data, API keys, client names, client domains, or Coolify deployment-specific values.
+Keep it client-neutral. Do not commit Paperclip instances, Hermes runtime profiles, API keys, client names, client domains, or Coolify deployment-specific values.
 
 Do not add CI workflow steps that target a specific brand's deployment (Coolify API calls, brand webhooks, brand-specific secrets). Brands consume the published `:latest` tag and trigger their own deploys.
 
@@ -47,7 +47,7 @@ Profile-sync is **key-gated**: it starts automatically when `PAPERCLIP_PROFILE_S
 Once running, profile-sync:
 - Writes `/data/agent-stack/org-chart.md` and `org-chart.json` (updated every 60 s)
 - Injects an org chart pointer into each agent's Paperclip capabilities field
-- Creates per-agent isolated Hermes profiles and GBrain homes
+- Creates per-agent isolated Hermes profiles
 
 Agents read `/data/agent-stack/org-chart.md` to resolve delegation targets. The `delegation-protocol.md` is seeded to every Hermes profile by `bootstrap-profiles.sh` and references this path.
 

@@ -2,10 +2,8 @@
 set -euo pipefail
 
 export HERMES_DATA_ROOT="${HERMES_DATA_ROOT:-/data/hermes}"
-export GBRAIN_DATA_ROOT="${GBRAIN_DATA_ROOT:-/data/gbrain}"
 export HERMES_PROFILES="${HERMES_PROFILES:-default}"
 export HERMES_HOME="${HERMES_HOME:-$HERMES_DATA_ROOT}"
-export GBRAIN_HOME="${GBRAIN_HOME:-$GBRAIN_DATA_ROOT/default}"
 
 # Source the shared profile-sync env file from the data volume. This file is
 # written by the paperclip service when a board API key is provisioned (either
@@ -22,7 +20,7 @@ fi
 
 rm -f /tmp/hermes-entrypoint-ready
 
-mkdir -p "$HERMES_DATA_ROOT" "$GBRAIN_DATA_ROOT" /home/node/.hermes /opt/work /data/.locks
+mkdir -p "$HERMES_DATA_ROOT" /home/node/.hermes /opt/work /data/.locks
 if [[ ! -e /hermes || -L /hermes ]]; then
   ln -sfn /data /hermes
 fi

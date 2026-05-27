@@ -2,12 +2,12 @@
 
 ## Goal
 
-Provide a GitHub-cloneable Paperclip + Hermes + GBrain template that can be deployed for a new client in Coolify without carrying any existing client state.
+Provide a GitHub-cloneable Paperclip + Hermes template that can be deployed for a new client in Coolify without carrying any existing client state.
 
 ## Shape
 
 - The source repo stores only the deploy recipe, scripts, tests, and neutral templates.
-- The Docker image installs Paperclip, Hermes Agent, GBrain, runtime entrypoints, and profile sync.
+- The Docker image installs Paperclip, Hermes Agent, runtime entrypoints, and profile sync.
 - Runtime state lives in the Coolify volume mounted at `/data`.
 - `paperclip` and `hermes` are separate Compose services using the same image and shared volume.
 - Paperclip is the source of truth for agent records, org structure, issues, and
@@ -19,7 +19,6 @@ Provide a GitHub-cloneable Paperclip + Hermes + GBrain template that can be depl
 - No Paperclip instances are committed.
 - No Hermes profiles are committed except neutral templates under `hermes-runtime/templates`.
 - The default Hermes `config.yaml` is an empty YAML map; runtime/client settings should be added per client after deploy.
-- No GBrain homes or PGLite stores are committed.
 - No client domains, names, tokens, or Coolify deployment values are committed.
 - The Dockerfile removes build-time Hermes bootstrap state and leaves `/data` empty in the final image.
 - The committed delegation protocol is client-neutral. At runtime the entrypoint
@@ -59,11 +58,9 @@ Provide a GitHub-cloneable Paperclip + Hermes + GBrain template that can be depl
    to `/data/agent-stack/learning-protocol.md`.
 3. Each Hermes profile home receives `LEARNING_PROTOCOL.md` for runs where the
    shared file path is unavailable.
-4. Agents use `gbrain search`, `gbrain query`, and `gbrain put` against their
-   role-specific `GBRAIN_HOME`.
-5. Agents inspect only relevant `/data/instances` files and use
+4. Agents inspect only relevant `/data/instances` files and use
    `/data/agent-stack/important-information-index.md` for broad pointers.
-6. No automatic crawler runs. Durable learned summaries are created at task end
+5. No automatic crawler runs. Durable learned summaries are created at task end
    only when the task produced reusable context.
 
 ## Verification

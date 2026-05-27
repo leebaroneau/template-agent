@@ -6,7 +6,6 @@ Keep it short and link to durable sources instead of duplicating large content.
 Use this for:
 - Key Paperclip projects or issue IDs.
 - Important source paths under `/data/instances`.
-- Role-specific GBrain pages.
 - Durable decisions and client conventions.
 - Credential location notes without storing credentials.
 

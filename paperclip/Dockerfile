@@ -3,16 +3,13 @@ FROM node:22-bookworm-slim
 
 ARG PAPERCLIP_VERSION=2026.513.0
 ARG HERMES_AGENT_REF=v2026.5.16
-ARG GBRAIN_REF=eval-run-v0.35.1.0-baseline
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PAPERCLIP_HOME=/data
 ENV PAPERCLIP_TELEMETRY_DISABLED=1
 ENV HERMES_DATA_ROOT=/data/hermes
-ENV GBRAIN_DATA_ROOT=/data/gbrain
 ENV HERMES_HOME=/data/hermes
 ENV HERMES_TUI_DIR=/usr/local/lib/hermes-agent/ui-tui
-ENV GBRAIN_HOME=/data/gbrain/default
 ENV PATH="/usr/local/bin:/root/.local/bin:/root/.bun/bin:${PATH}"
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -60,13 +57,6 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
   && npm run build \
   && ln -sf "$HERMES_SRC/venv/bin/hermes" /usr/local/bin/hermes
 
-RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked \
-    git clone https://github.com/garrytan/gbrain.git /opt/gbrain \
-  && cd /opt/gbrain \
-  && git fetch --depth 1 origin "${GBRAIN_REF}" \
-  && git checkout FETCH_HEAD \
-  && bun install --production
-
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm install -g "paperclipai@${PAPERCLIP_VERSION}"
 
@@ -76,7 +66,6 @@ COPY hermes-runtime/skills /opt/hermes-runtime/skills
 COPY paperclip/delegation-protocol.md /opt/paperclip/delegation-protocol.md
 COPY paperclip/learning-protocol.md /opt/paperclip/learning-protocol.md
 COPY paperclip/important-information-index.md /opt/paperclip/important-information-index.md
-COPY paperclip/gbrain-wrapper.sh /usr/local/bin/gbrain
 COPY paperclip/entrypoint.sh /opt/paperclip/entrypoint.sh
 COPY paperclip/hermes-entrypoint.sh /opt/paperclip/hermes-entrypoint.sh
 COPY paperclip/pre-deploy-backup.sh /opt/paperclip/pre-deploy-backup.sh
@@ -105,7 +94,6 @@ RUN mkdir -p /data /opt/work \
   && mkdir -p /opt/repos/bare /opt/repos/worktrees \
   && chown -R node:node /opt/repos \
   && chmod +x /usr/local/bin/bun \
-  && chmod +x /usr/local/bin/gbrain \
   && chmod +x /opt/paperclip/entrypoint.sh /opt/paperclip/hermes-entrypoint.sh /opt/paperclip/pre-deploy-backup.sh
 
 EXPOSE 3100 9119

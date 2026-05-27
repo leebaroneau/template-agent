@@ -58,7 +58,7 @@ When you can't progress because another agent or a human owns something:
 
 When the work is done:
 
-- `paperclip_update_issue` with `status: "done"` and a `comment` summarising what shipped, including the GBrain page slug if you wrote one (per the Learning Protocol).
+- `paperclip_update_issue` with `status: "done"` and a `comment` summarising what shipped.
 - If a follow-up surfaced during the work, file it as a new issue with `paperclip_create_issue` rather than burying it in the comment.
 
 ### 5. User asks about state
@@ -86,5 +86,5 @@ Tool calls default to the company set in `PAPERCLIP_DEFAULT_COMPANY_ID`. If you 
 ## Cross-references
 
 - Delegation Protocol (at `/data/hermes/DELEGATION_PROTOCOL.md` in your profile) explains the multi-role handoff rules.
-- Learning Protocol (at `/data/hermes/LEARNING_PROTOCOL.md`) tells you when to write GBrain pages and reference them from issue comments.
+- Learning Protocol (at `/data/hermes/LEARNING_PROTOCOL.md`) tells you task-scoped best practices.
 - Paperclip's org chart at `/data/agent-stack/org-chart.{md,json}` shows the reportsTo lines for `@`-mentions.
