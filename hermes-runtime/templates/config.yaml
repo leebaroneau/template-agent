@@ -27,9 +27,9 @@ memory:
   user_char_limit: 1375
   provider: lightrag
   lightrag:
-    # Local embeddings — no API key required. Hermes lazy-installs sentence-transformers.
-    # Override llm_model to match your deployment's primary model provider.
-    llm_model: google/gemini-3.1-flash
+    # llm_model omitted — inherits Hermes primary model (no separate setup needed).
+    # Set explicitly to override, e.g. llm_model: ollama/llama3.2 for fully local.
+    # embedding_model runs locally via sentence-transformers — no API key required.
     embedding_model: sentence-transformers/all-MiniLM-L6-v2
 
 # Context engine: use compressor to auto-summarise old messages when context fills.
