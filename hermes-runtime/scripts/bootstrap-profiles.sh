@@ -196,9 +196,104 @@ for name, spec in effective_mcp.items():
         merged_env[name] = added_keys
 
 if not added_entries and not merged_env:
+    pass  # continue to check other blocks below
+else:
+    profile["mcp_servers"] = profile_mcp
+
+# ── Sync additional template blocks (additive only, profile wins on collision) ──
+
+changed = bool(added_entries or merged_env)
+
+def set_if_absent(d, key, value):
+    """Set key in dict d only if absent or empty/null. Returns True if changed."""
+    if key not in d or d[key] is None or d[key] == '' or d[key] == {}:
+        d[key] = value
+        return True
+    return False
+
+def deep_merge_missing(base, additions):
+    """Recursively add keys from additions into base where absent. Returns True if changed."""
+    c = False
+    for k, v in additions.items():
+        if k not in base or base[k] is None or base[k] == '':
+            base[k] = v
+            c = True
+        elif isinstance(v, dict) and isinstance(base.get(k), dict):
+            c = deep_merge_missing(base[k], v) or c
+    return c
+
+# memory.provider — set if absent/empty
+tmpl_mem = template.get("memory") or {}
+if tmpl_mem.get("provider"):
+    profile_mem = profile.setdefault("memory", {})
+    if not isinstance(profile_mem, dict):
+        profile_mem = {}
+        profile["memory"] = profile_mem
+    if set_if_absent(profile_mem, "provider", tmpl_mem["provider"]):
+        changed = True
+
+# plugins — deep merge missing keys
+tmpl_plugins = template.get("plugins")
+if tmpl_plugins and isinstance(tmpl_plugins, dict):
+    profile_plugins = profile.setdefault("plugins", {})
+    if not isinstance(profile_plugins, dict):
+        profile_plugins = {}
+        profile["plugins"] = profile_plugins
+    if deep_merge_missing(profile_plugins, tmpl_plugins):
+        changed = True
+
+# context — set if absent
+tmpl_ctx = template.get("context")
+if tmpl_ctx and isinstance(tmpl_ctx, dict):
+    if "context" not in profile or not isinstance(profile.get("context"), dict):
+        profile["context"] = tmpl_ctx
+        changed = True
+
+# compression — set if absent
+tmpl_comp = template.get("compression")
+if tmpl_comp and isinstance(tmpl_comp, dict):
+    if "compression" not in profile:
+        profile["compression"] = tmpl_comp
+        changed = True
+
+# prompt_caching — set if absent
+tmpl_pc = template.get("prompt_caching")
+if tmpl_pc and isinstance(tmpl_pc, dict):
+    if "prompt_caching" not in profile:
+        profile["prompt_caching"] = tmpl_pc
+        changed = True
+
+# security — deep merge scalar keys; denylist is additive (union)
+tmpl_sec = template.get("security")
+if tmpl_sec and isinstance(tmpl_sec, dict):
+    profile_sec = profile.setdefault("security", {})
+    if not isinstance(profile_sec, dict):
+        profile_sec = {}
+        profile["security"] = profile_sec
+    # Scalar security keys
+    for sec_key in ("allow_private_urls", "redact_secrets", "tirith_enabled"):
+        if sec_key in tmpl_sec and sec_key not in profile_sec:
+            profile_sec[sec_key] = tmpl_sec[sec_key]
+            changed = True
+    # approval.denylist — additive union
+    tmpl_approval = tmpl_sec.get("approval") or {}
+    tmpl_denylist = tmpl_approval.get("denylist") or []
+    if tmpl_denylist:
+        profile_approval = profile_sec.setdefault("approval", {})
+        if not isinstance(profile_approval, dict):
+            profile_approval = {}
+            profile_sec["approval"] = profile_approval
+        existing_dl = profile_approval.get("denylist") or []
+        if not isinstance(existing_dl, list):
+            existing_dl = []
+        added_dl = [e for e in tmpl_denylist if e not in existing_dl]
+        if added_dl:
+            profile_approval["denylist"] = existing_dl + added_dl
+            changed = True
+
+if not changed:
     sys.exit(0)
 
-profile["mcp_servers"] = profile_mcp
 with open(profile_path, "w") as f:
     yaml.safe_dump(profile, f, sort_keys=False)
 
