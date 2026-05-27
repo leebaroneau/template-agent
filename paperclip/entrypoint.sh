@@ -7,13 +7,11 @@ chown -R node:node /data
 export PAPERCLIP_HOME="${PAPERCLIP_HOME:-/data}"
 export PAPERCLIP_TELEMETRY_DISABLED="${PAPERCLIP_TELEMETRY_DISABLED:-1}"
 export HERMES_DATA_ROOT="${HERMES_DATA_ROOT:-/data/hermes}"
-export GBRAIN_DATA_ROOT="${GBRAIN_DATA_ROOT:-/data/gbrain}"
 export HERMES_PROFILES="${HERMES_PROFILES:-default}"
 if [[ ",$HERMES_PROFILES," != *",default,"* ]]; then
   export HERMES_PROFILES="default,$HERMES_PROFILES"
 fi
 export HERMES_HOME="${HERMES_HOME:-$HERMES_DATA_ROOT}"
-export GBRAIN_HOME="${GBRAIN_HOME:-$GBRAIN_DATA_ROOT/default}"
 export PAPERCLIP_API_URL="${PAPERCLIP_API_URL:-http://127.0.0.1:3100}"
 export PROFILE_SYNC_MANIFEST_PATH="${PROFILE_SYNC_MANIFEST_PATH:-/data/agent-stack/profile-sync/manifest.json}"
 export PROFILE_SYNC_TEMPLATE_DIR="${PROFILE_SYNC_TEMPLATE_DIR:-/opt/hermes-runtime/templates}"
@@ -46,7 +44,7 @@ if [[ -n "${AGENT_STATE_DEPLOY_KEY:-}" ]]; then
   echo "[agent-stack] AGENT_STATE_DEPLOY_KEY installed at $KEY_FILE for pre-deploy backups"
 fi
 
-mkdir -p "$HERMES_DATA_ROOT" "$GBRAIN_DATA_ROOT" /home/node/.hermes /opt/work /data/.locks
+mkdir -p "$HERMES_DATA_ROOT" /home/node/.hermes /opt/work /data/.locks
 if [[ ! -e /hermes || -L /hermes ]]; then
   ln -sfn /data /hermes
 fi
@@ -79,8 +77,7 @@ if [[ ! -f /home/node/.hermes/config.yaml && -f "$HERMES_HOME/config.yaml" ]]; t
   chown -h node:node /home/node/.hermes/config.yaml
 fi
 
-runuser -u node -- env HERMES_HOME="$HERMES_HOME" GBRAIN_HOME="$GBRAIN_HOME" hermes --version
-runuser -u node -- env HERMES_HOME="$HERMES_HOME" GBRAIN_HOME="$GBRAIN_HOME" gbrain --version
+runuser -u node -- env HERMES_HOME="$HERMES_HOME" hermes --version
 
 eval "$(node /opt/paperclip/patch-paperclip-hermes-defaults.mjs env)"
 node /opt/paperclip/patch-hermes-profile-skill-count.mjs
@@ -117,7 +114,6 @@ elif [[ -n "$_sync_key" ]]; then
     PAPERCLIP_COMPANIES="${PAPERCLIP_COMPANIES:-}" \
     ORG_MIRROR_ROOT="$ORG_MIRROR_ROOT" \
     HERMES_DATA_ROOT="$HERMES_DATA_ROOT" \
-    GBRAIN_DATA_ROOT="$GBRAIN_DATA_ROOT" \
     node /opt/paperclip/profile-sync.mjs loop &
 else
   echo "[agent-stack] Profile-sync: no API key set, skipping. Set PAPERCLIP_PROFILE_SYNC_API_KEY to activate."
