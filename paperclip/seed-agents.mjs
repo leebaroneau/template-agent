@@ -40,7 +40,7 @@ const roles = [
     name: 'Hermes',
     role: 'assistant',
     title: 'Hermes Agent',
-    capabilities: 'Runs Hermes with the default profile and shared GBrain home.',
+    capabilities: 'Runs Hermes with the default profile.',
   },
 ];
 

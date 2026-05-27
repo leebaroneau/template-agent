@@ -24,4 +24,3 @@ case "$hermes_dashboard_enabled" in
 esac
 echo "Profile sync logs: ./scripts/local-logs.sh paperclip"
 echo "Hermes CLI: docker compose -f compose.yaml -f compose.build.yaml --env-file .env exec paperclip hermes --version"
-echo "GBrain CLI: docker compose -f compose.yaml -f compose.build.yaml --env-file .env exec paperclip gbrain --version"

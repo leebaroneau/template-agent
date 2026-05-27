@@ -25,7 +25,7 @@ const REPLACEMENT =
 
 // The bundled scanHermesSkills uses Dirent.isDirectory(), which returns false
 // for symlinks pointing at directories. agent-stack-managed profile homes are
-// full of symlinks (Hermes-bundled skills, gbrain skills, agent-stack skills)
+// full of symlinks (Hermes-bundled skills, agent-stack skills)
 // so every entry is silently skipped. Replace the two Dirent checks with a
 // helper that also accepts symlinks-to-directories via fs.stat (which derefs).
 const SYMLINK_ORIGINAL =

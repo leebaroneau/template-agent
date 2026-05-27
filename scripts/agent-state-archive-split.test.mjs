@@ -29,16 +29,16 @@ for (const script of scripts) {
         `source "${scriptPath}"`,
         `export AGENT_STATE_ARCHIVE_SPLIT_BYTES=1024`,
         `mkdir -p "${snapshot}"`,
-        `stage_snapshot_file "${source}" "${snapshot}" "gbrain.tar.gz"`,
-        `test ! -e "${snapshot}/gbrain.tar.gz"`,
-        `cat "${snapshot}"/gbrain.tar.gz.part-* > "${rejoined}"`,
+        `stage_snapshot_file "${source}" "${snapshot}" "hermes-profiles.tar.gz"`,
+        `test ! -e "${snapshot}/hermes-profiles.tar.gz"`,
+        `cat "${snapshot}"/hermes-profiles.tar.gz.part-* > "${rejoined}"`,
       ].join('\n')]);
 
-      const parts = (await readdir(snapshot)).filter((name) => name.startsWith('gbrain.tar.gz.part-')).sort();
+      const parts = (await readdir(snapshot)).filter((name) => name.startsWith('hermes-profiles.tar.gz.part-')).sort();
       assert.deepEqual(parts, [
-        'gbrain.tar.gz.part-0000',
-        'gbrain.tar.gz.part-0001',
-        'gbrain.tar.gz.part-0002',
+        'hermes-profiles.tar.gz.part-0000',
+        'hermes-profiles.tar.gz.part-0001',
+        'hermes-profiles.tar.gz.part-0002',
       ]);
       assert.equal((await stat(join(snapshot, parts[0]))).size, 1024);
       assert.equal((await stat(join(snapshot, parts[1]))).size, 1024);

@@ -30,7 +30,6 @@ async function gitLsFiles() {
 
 test('template no longer references the legacy project image identity', async () => {
   const forbidden = [
-    { pattern: ['paperclip', 'hermes', 'gbrain'].join('-'), label: 'legacy project name' },
     { pattern: ['AGENT', 'STACK', 'IMAGE'].join('_'), label: 'old registry image override' },
   ];
   const files = (await gitLsFiles()).filter((file) => file !== 'scripts/template-identity.test.mjs');

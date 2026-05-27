@@ -3,7 +3,7 @@
 #
 # This runs on the DROPLET HOST (not inside the container) via cron. It
 # `docker exec`s into the running paperclip + hermes containers to dump the
-# Paperclip DB and tar the Hermes profiles + GBrain pglites, then commits
+# Paperclip DB and tar the Hermes profiles, then commits
 # and pushes to the brand's `agent-<brand>` state repo on GitHub via SSH
 # deploy key.
 #
@@ -143,13 +143,11 @@ LATEST_DB="$(docker exec "$PAPERCLIP_CONTAINER" bash -lc 'ls -1t /tmp/paperclip-
 docker cp "$PAPERCLIP_CONTAINER:$LATEST_DB" "$TMP_DIR/paperclip-db.sql.gz"
 stage_snapshot_file "$TMP_DIR/paperclip-db.sql.gz" "$SNAPSHOT_DIR" "paperclip-db.sql.gz"
 
-# ── 2. Hermes profiles + 3. GBrain ─────────────────────────────────────
-log "Taring Hermes profiles + GBrain via $HERMES_CONTAINER"
-docker exec "$HERMES_CONTAINER" bash -lc 'cd /data && tar czf /tmp/hermes-profiles.tar.gz --exclude="hermes/profiles/*/profile-backups" --exclude="hermes/profiles/*/python-packages" --exclude="hermes/profiles/*/bin" --exclude="hermes/profiles/*/lsp" --exclude="hermes/profiles/*/cache" --exclude="hermes/profiles/*/audio_cache" --exclude="*/__pycache__" hermes/profiles hermes/SOUL.md hermes/auth.json hermes/.env hermes/cron hermes/hooks 2>/dev/null; tar czf /tmp/gbrain.tar.gz gbrain 2>/dev/null'
+# ── 2. Hermes profiles ──────────────────────────────────────────────────
+log "Taring Hermes profiles via $HERMES_CONTAINER"
+docker exec "$HERMES_CONTAINER" bash -lc 'cd /data && tar czf /tmp/hermes-profiles.tar.gz --exclude="hermes/profiles/*/profile-backups" --exclude="hermes/profiles/*/python-packages" --exclude="hermes/profiles/*/bin" --exclude="hermes/profiles/*/lsp" --exclude="hermes/profiles/*/cache" --exclude="hermes/profiles/*/audio_cache" --exclude="*/__pycache__" hermes/profiles hermes/SOUL.md hermes/auth.json hermes/.env hermes/cron hermes/hooks 2>/dev/null'
 docker cp "$HERMES_CONTAINER:/tmp/hermes-profiles.tar.gz" "$TMP_DIR/hermes-profiles.tar.gz"
-docker cp "$HERMES_CONTAINER:/tmp/gbrain.tar.gz" "$TMP_DIR/gbrain.tar.gz"
 stage_snapshot_file "$TMP_DIR/hermes-profiles.tar.gz" "$SNAPSHOT_DIR" "hermes-profiles.tar.gz"
-stage_snapshot_file "$TMP_DIR/gbrain.tar.gz" "$SNAPSHOT_DIR" "gbrain.tar.gz"
 
 # ── 4. Retention sweep ─────────────────────────────────────────────────
 log "Pruning snapshots older than $RETENTION_DAYS days"
