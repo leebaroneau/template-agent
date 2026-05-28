@@ -1,9 +1,12 @@
 # repo-access.yml — Role-group repo access config for hermes-worktree
 #
-# Mount this file into the container at the path set by REPO_ACCESS_CONFIG
-# (default: /config/repo-access.yml).
+# Place this file at /data/agent-stack/repo-access.yml inside the running
+# container. The data volume is already persistent — no external mount needed.
 #
-# On container start, the hermes-repos startup hook reads this file and:
+# One-time setup (run once after first deploy):
+#   docker cp repo-access.yml <hermes-container>:/data/agent-stack/repo-access.yml
+#
+# On every container start, the hermes-repos startup hook reads this file and:
 #   1. Clones any missing bare repos into /opt/repos/bare/
 #   2. Writes REPOS= into each profile's .env
 #

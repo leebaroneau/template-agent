@@ -81,9 +81,10 @@ services:
       DOCKER_CONFIG: /data/hermes/.docker
       AWS_CONFIG_FILE: /data/hermes/.aws/config
       AWS_SHARED_CREDENTIALS_FILE: /data/hermes/.aws/credentials
-      # Repo access setup — set GH_TOKEN for private repos; mount repo-access.yml at /config/
+      # Repo access: set GH_TOKEN for private repos. Place repo-access.yml at
+      # /data/agent-stack/repo-access.yml (persists in the data volume — no external mount needed).
       GH_TOKEN: ${GH_TOKEN:-}
-      REPO_ACCESS_CONFIG: ${REPO_ACCESS_CONFIG:-/config/repo-access.yml}
+      REPO_ACCESS_CONFIG: ${REPO_ACCESS_CONFIG:-/data/agent-stack/repo-access.yml}
       PAPERCLIP_API_KEY: ${PAPERCLIP_API_KEY:-}
       # Default to Docker Compose internal service DNS. Operators running in a
       # different topology (e.g. Paperclip on a separate host) can override via env.
