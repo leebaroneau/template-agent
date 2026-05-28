@@ -84,3 +84,21 @@ When a handoff fails, loops, or lands with the wrong owner:
 A delegated task is complete only when the receiving role has enough context to
 act, or when the original request is finished and the issue has a clear result,
 artifact, or blocker.
+
+
+## 7. Cognitive Expansion Engine
+
+Use the `ai-council` skill when a request exceeds normal single-pass reasoning:
+multi-layered strategy, major structural planning, deep risk assessment,
+high-stakes ambiguity, or complex logic. Do not use Hermes `moa`.
+
+Apply the smallest useful escalation:
+- `none`: answer directly with the current chat model.
+- `fast`: use the Strategy and Red-Team nodes with cheap/fast models.
+- `lite`: add the Analytical node for computation-heavy or evidence-heavy
+  questions.
+- `full`: reserve all nodes and an expensive orchestrator for rare,
+  high-impact work where the cost is justified.
+
+Deliver only the final synthesis to the user. Do not expose raw node debate
+unless the user explicitly asks for it.
