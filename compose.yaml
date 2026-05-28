@@ -70,6 +70,16 @@ services:
       HERMES_GATEWAY_PROFILES: ${HERMES_GATEWAY_PROFILES:-auto}
       HERMES_REPOS_ROOT: /opt/repos
       HERMES_REPOS: ${HERMES_REPOS:-}
+      # Redirect XDG config + data dirs into the persistent volume so all CLI OAuth
+      # tokens (gh, shopify, etc.) survive container redeploys. Non-XDG tools get
+      # explicit vars below. GH_CONFIG_DIR is redundant when XDG_CONFIG_HOME is set
+      # but kept explicit for clarity.
+      XDG_CONFIG_HOME: /data/hermes/.config
+      XDG_DATA_HOME: /data/hermes/.local/share
+      GH_CONFIG_DIR: /data/hermes/.config/gh
+      DOCKER_CONFIG: /data/hermes/.docker
+      AWS_CONFIG_FILE: /data/hermes/.aws/config
+      AWS_SHARED_CREDENTIALS_FILE: /data/hermes/.aws/credentials
       # Repo access setup — set GH_TOKEN for private repos; mount repo-access.yml at /config/
       GH_TOKEN: ${GH_TOKEN:-}
       REPO_ACCESS_CONFIG: ${REPO_ACCESS_CONFIG:-/config/repo-access.yml}
