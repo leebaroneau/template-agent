@@ -7,23 +7,22 @@ TEMPLATE_DIR="${TEMPLATE_DIR:-/opt/hermes-runtime/templates}"
 
 mkdir -p "$HERMES_DATA_ROOT/profiles"
 
-write_env_file() {
+# Ensure the profile .env file exists. Provider keys (ANTHROPIC_API_KEY,
+# OPENAI_API_KEY, OPENROUTER_API_KEY) are intentionally NOT written here —
+# they are inherited from the container env at runtime so that rotating a key
+# in Coolify takes effect on the next redeploy without touching volume files.
+ensure_env_file() {
   local env_file="$1"
-
-  if [[ -f "$env_file" ]]; then
-    return 0
-  fi
-
-  if [[ -z "${OPENAI_API_KEY:-}" && -z "${ANTHROPIC_API_KEY:-}" && -z "${OPENROUTER_API_KEY:-}" ]]; then
-    return 0
-  fi
-
   umask 077
-  {
-    [[ -n "${OPENAI_API_KEY:-}" ]] && printf 'OPENAI_API_KEY=%s\n' "$OPENAI_API_KEY"
-    [[ -n "${ANTHROPIC_API_KEY:-}" ]] && printf 'ANTHROPIC_API_KEY=%s\n' "$ANTHROPIC_API_KEY"
-    [[ -n "${OPENROUTER_API_KEY:-}" ]] && printf 'OPENROUTER_API_KEY=%s\n' "$OPENROUTER_API_KEY"
-  } > "$env_file"
+  touch "$env_file"
+}
+
+# Remove hardcoded provider keys from a profile .env so they fall through to
+# the container env. Called on every boot — idempotent.
+strip_provider_keys() {
+  local env_file="$1"
+  [[ -f "$env_file" ]] || return 0
+  sed -i '/^ANTHROPIC_API_KEY=/d;/^OPENAI_API_KEY=/d;/^OPENROUTER_API_KEY=/d' "$env_file"
 }
 
 
@@ -345,7 +344,8 @@ for raw_profile in "${profiles[@]}"; do
     cp "$TEMPLATE_DIR/LEARNING_PROTOCOL.md" "$profile_home/LEARNING_PROTOCOL.md"
   fi
 
-  write_env_file "$profile_home/.env"
+  ensure_env_file "$profile_home/.env"
+  strip_provider_keys "$profile_home/.env"
   # Inject PROFILE_NAME so the profile can self-reference without hardcoding its name.
   # Idempotent — only appends if the key is absent.
   if ! grep -q "^PROFILE_NAME=" "$profile_home/.env" 2>/dev/null; then
@@ -365,5 +365,6 @@ if [[ -d "$HERMES_DATA_ROOT/profiles" ]]; then
     [[ -f "$runtime_profile_home/config.yaml" ]] || continue
     sync_mcp_servers_from_template "$runtime_profile_home/config.yaml"
     install_agent_stack_skills "$runtime_profile_home"
+    strip_provider_keys "$runtime_profile_home/.env"
   done
 fi
