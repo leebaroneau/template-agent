@@ -2,51 +2,29 @@
 set -euo pipefail
 
 HERMES_DATA_ROOT="${HERMES_DATA_ROOT:-/opt/data/hermes}"
-GBRAIN_DATA_ROOT="${GBRAIN_DATA_ROOT:-/opt/data/gbrain}"
 HERMES_PROFILES="${HERMES_PROFILES:-default}"
 TEMPLATE_DIR="${TEMPLATE_DIR:-/opt/hermes-runtime/templates}"
 
-mkdir -p "$HERMES_DATA_ROOT/profiles" "$GBRAIN_DATA_ROOT"
+mkdir -p "$HERMES_DATA_ROOT/profiles"
 
-write_env_file() {
+# Ensure the profile .env file exists. Provider keys (ANTHROPIC_API_KEY,
+# OPENAI_API_KEY, OPENROUTER_API_KEY) are intentionally NOT written here —
+# they are inherited from the container env at runtime so that rotating a key
+# in Coolify takes effect on the next redeploy without touching volume files.
+ensure_env_file() {
   local env_file="$1"
-
-  if [[ -f "$env_file" ]]; then
-    return 0
-  fi
-
-  if [[ -z "${OPENAI_API_KEY:-}" && -z "${ANTHROPIC_API_KEY:-}" && -z "${OPENROUTER_API_KEY:-}" ]]; then
-    return 0
-  fi
-
   umask 077
-  {
-    [[ -n "${OPENAI_API_KEY:-}" ]] && printf 'OPENAI_API_KEY=%s\n' "$OPENAI_API_KEY"
-    [[ -n "${ANTHROPIC_API_KEY:-}" ]] && printf 'ANTHROPIC_API_KEY=%s\n' "$ANTHROPIC_API_KEY"
-    [[ -n "${OPENROUTER_API_KEY:-}" ]] && printf 'OPENROUTER_API_KEY=%s\n' "$OPENROUTER_API_KEY"
-  } > "$env_file"
+  touch "$env_file"
 }
 
-install_gbrain_skills() {
-  local profile_home="$1"
-  local gbrain_source="${GBRAIN_SKILLS_SOURCE:-/opt/gbrain/skills}"
-  local gbrain_dest="$profile_home/skills/gbrain"
-
-  if [[ ! -d "$gbrain_source" ]]; then
-    return 0
-  fi
-
-  mkdir -p "$gbrain_dest"
-  for skill_dir in "$gbrain_source"/*; do
-    [[ -d "$skill_dir" && -f "$skill_dir/SKILL.md" ]] || continue
-    local name
-    name="$(basename "$skill_dir")"
-    if [[ -e "$gbrain_dest/$name" && ! -L "$gbrain_dest/$name" ]]; then
-      continue
-    fi
-    ln -sfn "$skill_dir" "$gbrain_dest/$name"
-  done
+# Remove hardcoded provider keys from a profile .env so they fall through to
+# the container env. Called on every boot — idempotent.
+strip_provider_keys() {
+  local env_file="$1"
+  [[ -f "$env_file" ]] || return 0
+  sed -i '/^ANTHROPIC_API_KEY=/d;/^OPENAI_API_KEY=/d;/^OPENROUTER_API_KEY=/d' "$env_file"
 }
+
 
 install_hermes_bundled_skills() {
   local profile_home="$1"
@@ -69,8 +47,20 @@ install_hermes_bundled_skills() {
   done
 }
 
+# Remove dangling symlinks anywhere under a profile's skills/ tree.
+# Called on every boot so skills removed from the image don't leave broken
+# links that cause profile-sync.mjs copyTreeMissing to crash with EINVAL.
+prune_dangling_skill_symlinks() {
+  local profile_home="$1"
+  local skills_dir="$profile_home/skills"
+  [[ -d "$skills_dir" ]] || return 0
+  while IFS= read -r -d '' link; do
+    [[ -e "$link" ]] || rm "$link"
+  done < <(find "$skills_dir" -type l -print0 2>/dev/null)
+}
+
 # Symlink agent-stack-shipped skills (e.g. using-paperclip) into every
-# Hermes profile's skills/agent-stack/ directory. Mirrors install_gbrain_skills
+# Hermes profile's skills/agent-stack/ directory.
 # pattern. Source dir is baked into the image at /opt/hermes-runtime/skills/.
 install_agent_stack_skills() {
   local profile_home="$1"
@@ -95,7 +85,7 @@ install_agent_stack_skills() {
 
 # Idempotently reconcile mcp_servers between the effective template
 # (canonical + brand overlays) and a profile's config. Conservative —
-# human customisations are preserved.
+# manual customisations are preserved.
 #
 # Two operations:
 #   1. ADD-NEW: entries present in the effective template but missing from
@@ -110,7 +100,7 @@ install_agent_stack_skills() {
 #      would otherwise never reach existing profiles.
 #
 # Non-env fields (command, args, timeout, custom keys) on existing entries
-# are still NEVER touched — humans who edited those keep their changes.
+# are still NEVER touched — manually edited entries keep their changes.
 #
 # Merge semantics (strictly additive at both layers):
 #   - Canonical template wins over any overlay on key collision.
@@ -217,9 +207,104 @@ for name, spec in effective_mcp.items():
         merged_env[name] = added_keys
 
 if not added_entries and not merged_env:
+    pass  # continue to check other blocks below
+else:
+    profile["mcp_servers"] = profile_mcp
+
+# ── Sync additional template blocks (additive only, profile wins on collision) ──
+
+changed = bool(added_entries or merged_env)
+
+def set_if_absent(d, key, value):
+    """Set key in dict d only if absent or empty/null. Returns True if changed."""
+    if key not in d or d[key] is None or d[key] == '' or d[key] == {}:
+        d[key] = value
+        return True
+    return False
+
+def deep_merge_missing(base, additions):
+    """Recursively add keys from additions into base where absent. Returns True if changed."""
+    c = False
+    for k, v in additions.items():
+        if k not in base or base[k] is None or base[k] == '':
+            base[k] = v
+            c = True
+        elif isinstance(v, dict) and isinstance(base.get(k), dict):
+            c = deep_merge_missing(base[k], v) or c
+    return c
+
+# memory.provider — set if absent/empty
+tmpl_mem = template.get("memory") or {}
+if tmpl_mem.get("provider"):
+    profile_mem = profile.setdefault("memory", {})
+    if not isinstance(profile_mem, dict):
+        profile_mem = {}
+        profile["memory"] = profile_mem
+    if set_if_absent(profile_mem, "provider", tmpl_mem["provider"]):
+        changed = True
+
+# plugins — deep merge missing keys
+tmpl_plugins = template.get("plugins")
+if tmpl_plugins and isinstance(tmpl_plugins, dict):
+    profile_plugins = profile.setdefault("plugins", {})
+    if not isinstance(profile_plugins, dict):
+        profile_plugins = {}
+        profile["plugins"] = profile_plugins
+    if deep_merge_missing(profile_plugins, tmpl_plugins):
+        changed = True
+
+# context — set if absent
+tmpl_ctx = template.get("context")
+if tmpl_ctx and isinstance(tmpl_ctx, dict):
+    if "context" not in profile or not isinstance(profile.get("context"), dict):
+        profile["context"] = tmpl_ctx
+        changed = True
+
+# compression — set if absent
+tmpl_comp = template.get("compression")
+if tmpl_comp and isinstance(tmpl_comp, dict):
+    if "compression" not in profile:
+        profile["compression"] = tmpl_comp
+        changed = True
+
+# prompt_caching — set if absent
+tmpl_pc = template.get("prompt_caching")
+if tmpl_pc and isinstance(tmpl_pc, dict):
+    if "prompt_caching" not in profile:
+        profile["prompt_caching"] = tmpl_pc
+        changed = True
+
+# security — deep merge scalar keys; denylist is additive (union)
+tmpl_sec = template.get("security")
+if tmpl_sec and isinstance(tmpl_sec, dict):
+    profile_sec = profile.setdefault("security", {})
+    if not isinstance(profile_sec, dict):
+        profile_sec = {}
+        profile["security"] = profile_sec
+    # Scalar security keys
+    for sec_key in ("allow_private_urls", "redact_secrets", "tirith_enabled"):
+        if sec_key in tmpl_sec and sec_key not in profile_sec:
+            profile_sec[sec_key] = tmpl_sec[sec_key]
+            changed = True
+    # approval.denylist — additive union
+    tmpl_approval = tmpl_sec.get("approval") or {}
+    tmpl_denylist = tmpl_approval.get("denylist") or []
+    if tmpl_denylist:
+        profile_approval = profile_sec.setdefault("approval", {})
+        if not isinstance(profile_approval, dict):
+            profile_approval = {}
+            profile_sec["approval"] = profile_approval
+        existing_dl = profile_approval.get("denylist") or []
+        if not isinstance(existing_dl, list):
+            existing_dl = []
+        added_dl = [e for e in tmpl_denylist if e not in existing_dl]
+        if added_dl:
+            profile_approval["denylist"] = existing_dl + added_dl
+            changed = True
+
+if not changed:
     sys.exit(0)
 
-profile["mcp_servers"] = profile_mcp
 with open(profile_path, "w") as f:
     yaml.safe_dump(profile, f, sort_keys=False)
 
@@ -246,9 +331,8 @@ for raw_profile in "${profiles[@]}"; do
   else
     profile_home="$HERMES_DATA_ROOT/profiles/$profile"
   fi
-  gbrain_home="$GBRAIN_DATA_ROOT/$profile"
 
-  mkdir -p "$profile_home" "$gbrain_home"
+  mkdir -p "$profile_home"
 
   if [[ ! -f "$profile_home/config.yaml" ]]; then
     cp "$TEMPLATE_DIR/config.yaml" "$profile_home/config.yaml"
@@ -272,15 +356,16 @@ for raw_profile in "${profiles[@]}"; do
     cp "$TEMPLATE_DIR/LEARNING_PROTOCOL.md" "$profile_home/LEARNING_PROTOCOL.md"
   fi
 
-  write_env_file "$profile_home/.env"
-  install_gbrain_skills "$profile_home"
+  ensure_env_file "$profile_home/.env"
+  strip_provider_keys "$profile_home/.env"
+  # Inject PROFILE_NAME so the profile can self-reference without hardcoding its name.
+  # Idempotent — only appends if the key is absent.
+  if ! grep -q "^PROFILE_NAME=" "$profile_home/.env" 2>/dev/null; then
+    echo "PROFILE_NAME=$profile" >> "$profile_home/.env"
+  fi
   install_hermes_bundled_skills "$profile_home"
   install_agent_stack_skills "$profile_home"
-
-  if [[ ! -f "$gbrain_home/.gbrain/config.json" ]]; then
-    GBRAIN_HOME="$gbrain_home" gbrain init --pglite
-    GBRAIN_HOME="$gbrain_home" gbrain config set search.mode conservative >/dev/null 2>&1 || true
-  fi
+  prune_dangling_skill_symlinks "$profile_home"
 done
 
 # Sweep any profile homes profile-sync may have created at runtime (per-role
@@ -292,6 +377,9 @@ if [[ -d "$HERMES_DATA_ROOT/profiles" ]]; then
     [[ -d "$runtime_profile_home" ]] || continue
     [[ -f "$runtime_profile_home/config.yaml" ]] || continue
     sync_mcp_servers_from_template "$runtime_profile_home/config.yaml"
+    install_hermes_bundled_skills "$runtime_profile_home"
     install_agent_stack_skills "$runtime_profile_home"
+    strip_provider_keys "$runtime_profile_home/.env"
+    prune_dangling_skill_symlinks "$runtime_profile_home"
   done
 fi

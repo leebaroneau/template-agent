@@ -10,22 +10,25 @@ services:
       PAPERCLIP_DEPLOYMENT_EXPOSURE: private
       PAPERCLIP_PUBLIC_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
       PAPERCLIP_AUTH_PUBLIC_BASE_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
-      PAPERCLIP_ALLOWED_HOSTNAMES: ${PAPERCLIP_ALLOWED_HOSTNAMES:-paperclip,localhost,127.0.0.1}
+      # Internal Docker service name + localhost are always allowed. The public
+      # hostname is appended automatically via PAPERCLIP_HOSTNAME (already
+      # required for Traefik routing). This approach avoids an operator override
+      # accidentally stripping the internal names from the list.
+      PAPERCLIP_ALLOWED_HOSTNAMES: "paperclip,localhost,127.0.0.1,${PAPERCLIP_HOSTNAME:-paperclip.example.com}"
       BETTER_AUTH_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
       BETTER_AUTH_BASE_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
       PORT: "3100"
       HERMES_DATA_ROOT: /data/hermes
-      GBRAIN_DATA_ROOT: /data/gbrain
       HERMES_HOME: /data/hermes
-      GBRAIN_HOME: /data/gbrain/default
       HERMES_PROFILES: ${HERMES_PROFILES:-default}
       PAPERCLIP_API_URL: http://127.0.0.1:3100
-      PROFILE_SYNC_ENABLED: ${PROFILE_SYNC_ENABLED:-0}
+      # PROFILE_SYNC_ENABLED: not set — profile-sync starts automatically when
+      # PAPERCLIP_PROFILE_SYNC_API_KEY is present. Set PROFILE_SYNC_ENABLED=0 to disable.
       PROFILE_SYNC_INTERVAL_SEC: ${PROFILE_SYNC_INTERVAL_SEC:-60}
       PROFILE_SYNC_DELETE_MODE: ${PROFILE_SYNC_DELETE_MODE:-archive}
       PROFILE_SYNC_MANIFEST_PATH: /data/agent-stack/profile-sync/manifest.json
       PROFILE_SYNC_TEMPLATE_DIR: /opt/hermes-runtime/templates
-      PROFILE_SYNC_DEFAULT_COMPANY_SKILLS: ${PROFILE_SYNC_DEFAULT_COMPANY_SKILLS:-gbrain,use-100m-framework}
+      PROFILE_SYNC_DEFAULT_COMPANY_SKILLS: ${PROFILE_SYNC_DEFAULT_COMPANY_SKILLS:-use-100m-framework}
       PROFILE_SYNC_DEFAULT_COMPANY_SKILL_SOURCE_DIR: ${PROFILE_SYNC_DEFAULT_COMPANY_SKILL_SOURCE_DIR:-/opt/hermes-runtime/skills}
       ORG_MIRROR_ROOT: ${ORG_MIRROR_ROOT:-/data/agent-stack}
       PROFILE_SYNC_API_BASE: ${PROFILE_SYNC_API_BASE:-http://127.0.0.1:3100}
@@ -56,9 +59,7 @@ services:
     entrypoint: ["/usr/bin/tini", "--", "/opt/paperclip/hermes-entrypoint.sh"]
     environment:
       HERMES_DATA_ROOT: /data/hermes
-      GBRAIN_DATA_ROOT: /data/gbrain
       HERMES_HOME: /data/hermes
-      GBRAIN_HOME: /data/gbrain/default
       HERMES_PROFILES: ${HERMES_PROFILES:-default}
       HERMES_DASHBOARD_ENABLED: ${HERMES_DASHBOARD_ENABLED:-0}
       HERMES_DASHBOARD_HOST: 0.0.0.0
@@ -67,14 +68,22 @@ services:
       HERMES_DASHBOARD_SKIP_BUILD: ${HERMES_DASHBOARD_SKIP_BUILD:-1}
       HERMES_GATEWAY_AUTOSTART: ${HERMES_GATEWAY_AUTOSTART:-1}
       HERMES_GATEWAY_PROFILES: ${HERMES_GATEWAY_PROFILES:-auto}
+      HERMES_REPOS_ROOT: /opt/repos
+      HERMES_REPOS: ${HERMES_REPOS:-}
+      # Repo access setup — set GH_TOKEN for private repos; mount repo-access.yml at /config/
+      GH_TOKEN: ${GH_TOKEN:-}
+      REPO_ACCESS_CONFIG: ${REPO_ACCESS_CONFIG:-/config/repo-access.yml}
       PAPERCLIP_API_KEY: ${PAPERCLIP_API_KEY:-}
-      PAPERCLIP_API_BASE: http://paperclip:3100
+      # Default to Docker Compose internal service DNS. Operators running in a
+      # different topology (e.g. Paperclip on a separate host) can override via env.
+      PAPERCLIP_API_BASE: ${PAPERCLIP_API_BASE:-http://paperclip:3100}
       PAPERCLIP_DEFAULT_COMPANY_ID: ${PAPERCLIP_DEFAULT_COMPANY_ID:-}
       PAPERCLIP_PROFILE_SYNC_API_KEY: ${PAPERCLIP_PROFILE_SYNC_API_KEY:-}
     expose:
       - "9119"
     volumes:
       - paperclip-data:/data
+      - hermes-repos:/opt/repos
     depends_on:
       - paperclip
     healthcheck:
@@ -87,3 +96,4 @@ services:
 
 volumes:
   paperclip-data:
+  hermes-repos:

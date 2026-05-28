@@ -6,14 +6,14 @@ If you're spinning up a new brand, follow [Setup](#setup-a-new-brand). If you're
 
 ## Why this exists
 
-The dual container stores all live state (Paperclip DB, Hermes profiles, GBrain pglites) on a single `/data` volume. Volume-shape changes during deploy have wiped this volume in the past (3× in one week on the Haverford instance, per the [`feedback_paperclip_volume_shape_change_wipes_data`](https://github.com/leebaroneau/lee-dashboard/blob/main/.claude/projects/-Users-leebaroneau-Documents-GitHub-lee-dashboard/memory/feedback_paperclip_volume_shape_change_wipes_data.md) memory). Two backup mechanisms layer to keep data loss windows tight:
+The dual container stores all live state (Paperclip DB, Hermes profiles) on a single `/data` volume. Volume-shape changes during deploy have wiped this volume in the past (3× in one week on the Haverford instance, per the [`feedback_paperclip_volume_shape_change_wipes_data`](https://github.com/leebaroneau/lee-dashboard/blob/main/.claude/projects/-Users-leebaroneau-Documents-GitHub-lee-dashboard/memory/feedback_paperclip_volume_shape_change_wipes_data.md) memory). Two backup mechanisms layer to keep data loss windows tight:
 
 | When | Mechanism | Ships from | Pushes to |
 | :---- | :---- | :---- | :---- |
 | Nightly @ 17:00 UTC | Host-side cron runs [`scripts/host/nightly-backup.sh`](../scripts/host/nightly-backup.sh) | template-agent (template; operator copies once) | brand state repo |
 | Before every deploy | Coolify `pre_deployment_command` runs [`paperclip/pre-deploy-backup.sh`](../paperclip/pre-deploy-backup.sh) inside the OLD container | template-agent (baked into image) | brand state repo |
 
-Both push to the same `<Org>/agent-<brand>` GitHub repo, which holds dated snapshot directories with the Paperclip DB dump, tarred Hermes profiles, and tarred GBrain pglites.
+Both push to the same `<Org>/agent-<brand>` GitHub repo, which holds dated snapshot directories with the Paperclip DB dump and tarred Hermes profiles.
 
 Hermes profile archives intentionally exclude reconstructible dependency/cache folders and nested historical profile backups (`profile-backups`, `python-packages`, `bin`, `lsp`, `cache`, `audio_cache`, `__pycache__`). The state repo should preserve current operational state, not duplicate package installs. Any snapshot file above `AGENT_STATE_ARCHIVE_SPLIT_BYTES` is committed as numbered `.part-0000` files so GitHub's 100 MB per-file limit does not block deploys.
 
@@ -21,7 +21,7 @@ Hermes profile archives intentionally exclude reconstructible dependency/cache f
 
 Every brand deployment uses the same repo boundary:
 
-- `leebaroneau/template-agent` is the only deployable code base for the stock Paperclip+Hermes+GBrain stack.
+- `leebaroneau/template-agent` is the only deployable code base for the stock Paperclip+Hermes stack.
 - `<Org>/agent-<brand>` is a private state-only repo. It holds nightly and pre-deploy snapshots only, not Dockerfiles, compose files, runtime seed scripts, or brand wrapper code.
 - Coolify deploys the brand stack from `template-agent` and injects brand-specific settings through environment variables, persistent storage, and the `/data` volume.
 - Both backup paths push into the brand's `agent-<brand>` repo so restore history lives with the brand while deployable code stays centralized.
@@ -225,16 +225,13 @@ cd agent-<brand>/<date-to-restore-from>
 docker cp paperclip-db.sql.gz <paperclip-container>:/tmp/
 docker exec <paperclip-container> paperclipai db:restore /tmp/paperclip-db.sql.gz
 
-# 3. Restore Hermes profiles + GBrain
-for archive in hermes-profiles.tar.gz gbrain.tar.gz; do
-  if ls "$archive".part-* >/dev/null 2>&1; then
-    cat "$archive".part-* > "$archive"
-  fi
-done
+# 3. Restore Hermes profiles
+if ls hermes-profiles.tar.gz.part-* >/dev/null 2>&1; then
+  cat hermes-profiles.tar.gz.part-* > hermes-profiles.tar.gz
+fi
 
 docker cp hermes-profiles.tar.gz <hermes-container>:/data/
-docker cp gbrain.tar.gz <hermes-container>:/data/
-docker exec <hermes-container> bash -c 'cd /data && tar xzf hermes-profiles.tar.gz && tar xzf gbrain.tar.gz'
+docker exec <hermes-container> bash -c 'cd /data && tar xzf hermes-profiles.tar.gz'
 ```
 
 ## Related docs

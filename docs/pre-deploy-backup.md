@@ -6,7 +6,7 @@ When a Paperclip+Hermes deployment is replaced (e.g. by a Coolify redeploy after
 
 1. **Container start.** `paperclip/entrypoint.sh` reads `AGENT_STATE_DEPLOY_KEY` from env. If set, it base64-decodes it into `/home/node/.ssh/agent-state-deploy` (`chmod 600`, owned by `node`) and pins `github.com`'s host key into `known_hosts`.
 2. **Coolify deploy starts.** Coolify's `pre_deployment_command` runs `docker exec` against the OLD container, invoking `bash /opt/paperclip/pre-deploy-backup.sh`.
-3. **The script** dumps Paperclip's DB (`paperclipai db:backup`), tars `/data/hermes/profiles/` and `/data/gbrain/`, clones the state repo via the deploy key, drops the snapshots into a `YYYY-MM-DD/` directory, commits and pushes.
+3. **The script** dumps Paperclip's DB (`paperclipai db:backup`), tars `/data/hermes/profiles/`, clones the state repo via the deploy key, drops the snapshots into a `YYYY-MM-DD/` directory, commits and pushes.
 4. **Coolify replaces the container.** The new container's entrypoint re-installs the SSH key, ready for the next deploy.
 
 If `AGENT_STATE_DEPLOY_KEY` is unset, both the entrypoint key-install and the backup script are graceful no-ops — the deployment proceeds unchanged. This keeps the template usable for new instances that haven't wired up a state repo yet.
@@ -63,8 +63,7 @@ agent-<brand>/
 ├── README.md
 ├── 2026-05-22/
 │   ├── paperclip-db.sql.gz
-│   ├── hermes-profiles.tar.gz
-│   └── gbrain.tar.gz.part-0000
+│   └── hermes-profiles.tar.gz
 └── 2026-05-23/
     └── ...
 ```

@@ -2,18 +2,29 @@
 set -euo pipefail
 
 export HERMES_DATA_ROOT="${HERMES_DATA_ROOT:-/data/hermes}"
-export GBRAIN_DATA_ROOT="${GBRAIN_DATA_ROOT:-/data/gbrain}"
 export HERMES_PROFILES="${HERMES_PROFILES:-default}"
 export HERMES_HOME="${HERMES_HOME:-$HERMES_DATA_ROOT}"
-export GBRAIN_HOME="${GBRAIN_HOME:-$GBRAIN_DATA_ROOT/default}"
+
+# Source the shared profile-sync env file from the data volume. This file is
+# written by the paperclip service when a board API key is provisioned (either
+# manually via `paperclipai auth login` or by the auto-setup flow). Sourcing it
+# here means a key stored on the volume is automatically active in the hermes
+# container on every restart — no Coolify env var update needed.
+PROFILE_SYNC_ENV_FILE="${PROFILE_SYNC_ENV_FILE:-/data/agent-stack/profile-sync/profile-sync.env}"
+if [[ -f "$PROFILE_SYNC_ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$PROFILE_SYNC_ENV_FILE"
+  set +a
+fi
 
 rm -f /tmp/hermes-entrypoint-ready
 
-mkdir -p "$HERMES_DATA_ROOT" "$GBRAIN_DATA_ROOT" /home/node/.hermes /opt/work /data/.locks
+mkdir -p "$HERMES_DATA_ROOT" /home/node/.hermes /opt/work /data/.locks
 if [[ ! -e /hermes || -L /hermes ]]; then
   ln -sfn /data /hermes
 fi
-chown -R node:node /data /home/node/.hermes /opt/work
+chown -R node:node /data /home/node/.hermes /opt/work /opt/repos
 
 runuser -u node -- flock /data/.locks/bootstrap-profiles.lock /opt/hermes-runtime/scripts/bootstrap-profiles.sh
 
@@ -23,6 +34,20 @@ if [[ ! -f /home/node/.hermes/config.yaml && -f "$HERMES_HOME/config.yaml" ]]; t
 fi
 
 node /opt/paperclip/patch-hermes-profile-skill-count.mjs
+
+# ── Hermes-repos auto-setup ──────────────────────────────────────────────────
+# If REPO_ACCESS_CONFIG points to a repo-access.yml, clone any missing bare
+# repos and sync REPOS= into all profile .env files. Non-fatal: warnings are
+# logged but Hermes still starts if setup fails.
+REPO_ACCESS_CONFIG="${REPO_ACCESS_CONFIG:-/config/repo-access.yml}"
+if [[ -f "$REPO_ACCESS_CONFIG" ]]; then
+  echo "[hermes-repos] Config found at $REPO_ACCESS_CONFIG — running setup..."
+  /opt/hermes-runtime/scripts/setup-repos-from-yaml.sh --config "$REPO_ACCESS_CONFIG" \
+    || echo "[hermes-repos] WARN: setup-repos-from-yaml.sh failed — check logs above"
+  /opt/hermes-runtime/scripts/sync-repos-local.sh --config "$REPO_ACCESS_CONFIG" \
+    || echo "[hermes-repos] WARN: sync-repos-local.sh failed — check logs above"
+  echo "[hermes-repos] Setup complete."
+fi
 
 profile_has_gateway_env() {
   local profile_home="$1"

@@ -24,16 +24,16 @@ The shared framework lives outside this runtime template:
 00_resources/frameworks/100m-framework/
 ```
 
-In deployed Paperclip/Hermes companies, use the framework pages only when they are available through the task context, mounted files, synced notes, or a GBrain result. If the shared framework is not available, continue with the current task context and write a field-learning proposal that names the missing framework reference.
+In deployed Paperclip/Hermes companies, use the framework pages only when they are available through the task context, mounted files, or synced notes. If the shared framework is not available, continue with the current task context and write a field-learning proposal that names the missing framework reference.
 
 ## Application Flow
 
 1. Read the current Paperclip issue, project context, and any linked evidence.
-2. Search your role-specific GBrain for the company, project, offer, channel, customer segment, or prior `$100M` field learnings.
+2. Consult `/data/agent-stack/important-information-index.md` for the company, project, offer, channel, customer segment, or prior `$100M` field learnings.
 3. Diagnose the active constraint as one of: Offer, Money Model, Leads, Sales Execution, or Market Selection.
 4. Choose one candidate opportunity that directly attacks the constraint.
 5. Name the evidence, confidence level, success metric, and learning date.
-6. Leave the company-specific diagnosis in the company runtime or company GBrain, not in shared framework doctrine.
+6. Leave the company-specific diagnosis in the company runtime, not in shared framework doctrine.
 
 ## Field-Learning Capture
 
@@ -70,7 +70,7 @@ Use exactly one: clarity, example, pattern, strategic.
 ## Evidence
 
 - [Source: Paperclip issue <identifier>, <YYYY-MM-DD>]
-- [Source: sanitized company GBrain page <slug>, <YYYY-MM-DD>]
+- [Source: Paperclip issue <identifier>, <YYYY-MM-DD>]
 
 ## Why It Generalizes
 

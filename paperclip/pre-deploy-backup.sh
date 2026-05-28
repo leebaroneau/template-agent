@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Pre-deployment backup for the dual Paperclip+Hermes container.
 #
-# Snapshots the live /data volume (Paperclip DB + Hermes profiles + GBrain
-# pglites) and pushes a dated commit to a per-brand state repo BEFORE
+# Snapshots the live /data volume (Paperclip DB + Hermes profiles) and pushes
+# a dated commit to a per-brand state repo BEFORE
 # Coolify replaces this container.
 #
 # Wired in by setting Coolify's `pre_deployment_command` to:
@@ -99,8 +99,8 @@ ASKPASS
   db_file="$(ls -1t "$TMP_DIR"/paperclip-*.sql.gz | head -1)"
   [[ -f "$db_file" ]] || { log "ERROR: paperclipai db:backup produced no .sql.gz; aborting"; exit 1; }
 
-  # 2. Hermes profiles + 3. GBrain  (both live on the shared /data volume)
-  log "Taring Hermes profiles + GBrain"
+  # 2. Hermes profiles  (live on the shared /data volume)
+  log "Taring Hermes profiles"
   tar czf "$TMP_DIR/hermes-profiles.tar.gz" \
     --exclude='hermes/profiles/*/profile-backups' \
     --exclude='hermes/profiles/*/python-packages' \
@@ -111,7 +111,6 @@ ASKPASS
     --exclude='*/__pycache__' \
     -C /data \
     hermes/profiles hermes/SOUL.md hermes/auth.json hermes/.env hermes/cron hermes/hooks 2>/dev/null || true
-  tar czf "$TMP_DIR/gbrain.tar.gz" -C /data gbrain 2>/dev/null || true
 
   # 4. Clone (or refresh) the state repo via the deploy key
   log "Refreshing $workdir"
@@ -123,7 +122,6 @@ ASKPASS
   mkdir -p "$snapshot_dir"
   stage_snapshot_file "$db_file" "$snapshot_dir" "paperclip-db.sql.gz"
   stage_snapshot_file "$TMP_DIR/hermes-profiles.tar.gz" "$snapshot_dir" "hermes-profiles.tar.gz" "no hermes-profiles archive, skipping"
-  stage_snapshot_file "$TMP_DIR/gbrain.tar.gz" "$snapshot_dir" "gbrain.tar.gz" "no gbrain archive, skipping"
 
   cd "$workdir"
   git add -A

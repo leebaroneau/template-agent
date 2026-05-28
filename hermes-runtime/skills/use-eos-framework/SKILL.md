@@ -31,8 +31,8 @@ The shared framework lives outside this runtime template:
 ```
 
 In deployed Paperclip/Hermes companies, use the framework pages only when they
-are available through the task context, mounted files, synced notes, or a GBrain
-result. If the shared framework is not available, continue from the current
+are available through the task context, mounted files, or synced notes.
+If the shared framework is not available, continue from the current
 Paperclip context and write a field-learning proposal that names the missing
 framework reference.
 
@@ -50,8 +50,8 @@ framework reference.
 
 1. Read the current Paperclip issue, parent issue, project, goal, comments, and
    your own role context.
-2. Search your role-specific GBrain for the company, project, current Rocks,
-   scorecards, prior decisions, and prior `eos-field-learning` pages.
+2. Consult `/data/agent-stack/important-information-index.md` for the company, project, current Rocks,
+   scorecards, prior decisions, and prior field learnings.
 3. If the work is strategic priority-setting, apply `use-100m-framework` first
    or confirm the `$100M` opportunity has already been selected.
 4. Choose the smallest EOS workflow that matches the task:
@@ -63,7 +63,7 @@ framework reference.
 5. Convert the EOS output into Paperclip state: goal, project, parent issue,
    child issues, routine setup issue, approval request, or manager escalation.
 6. Name the owner, success metric, review date, unresolved issue, and evidence.
-7. Leave company-specific diagnosis in the company runtime or company GBrain,
+7. Leave company-specific diagnosis in the company runtime,
    not in shared framework doctrine.
 
 ## Paperclip Actions
@@ -125,7 +125,7 @@ Use exactly one: clarity, example, pattern, strategic.
 ## Evidence
 
 - [Source: Paperclip issue <identifier>, <YYYY-MM-DD>]
-- [Source: sanitized company GBrain page <slug>, <YYYY-MM-DD>]
+- [Source: Paperclip issue <identifier>, <YYYY-MM-DD>]
 
 ## Why It Generalizes
 

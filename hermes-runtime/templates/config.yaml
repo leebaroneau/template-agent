@@ -23,5 +23,47 @@ mcp_servers:
 memory:
   memory_enabled: true
   user_profile_enabled: true
-  memory_char_limit: 2200
-  user_char_limit: 1375
+  memory_char_limit: 2000
+  user_char_limit: 2000
+  provider: holographic
+
+# Holographic: local SQLite memory store. No API key, no external service.
+# auto_extract: true — automatically extracts facts from conversations at session end.
+# Per-profile isolated (each profile gets its own memory_store.db).
+plugins:
+  hermes-memory-store:
+    auto_extract: true
+    default_trust: 0.5
+
+# Context engine: use compressor to auto-summarise old messages when context fills.
+# Fires at 50% of context window; retains last 20 messages verbatim; targets 20%
+# of original size after compression. hygiene_hard_message_limit is a safety cap.
+context:
+  engine: compressor
+
+compression:
+  enabled: true
+  threshold: 0.5
+  target_ratio: 0.2
+  protect_last_n: 20
+  hygiene_hard_message_limit: 400
+
+# Prompt caching reduces cost on repeated context (system prompt, skill blocks).
+# Hermes attaches cache_control breakpoints automatically when this is enabled.
+prompt_caching:
+  enabled: true
+
+# Security defaults. redact_secrets strips API key patterns from memory writes
+# and tool output before they reach the LLM or are stored in MEMORY.md.
+# tirith_enabled activates the Tirith approval layer for destructive actions.
+security:
+  allow_private_urls: false
+  redact_secrets: true
+  tirith_enabled: true
+  approval:
+    denylist:
+      - 'rm\s+-rf\s+/'
+      - 'curl\s+.+\|\s*(sh|bash)'
+      - '169\.254\.169\.254'
+      - 'cat\s+~?/?\.?ssh/'
+      - 'aws\s+s3\s+sync\s+.+\s+s3://'

@@ -9,7 +9,7 @@ company profiles.
 
 | Role | Runs where | Responsibility |
 | --- | --- | --- |
-| Company agents | Every company Paperclip/Hermes deployment | Apply the framework and write sanitized `100m-field-learning` proposals into their role-specific GBrain. |
+| Company agents | Every company Paperclip/Hermes deployment | Apply the framework and write sanitized `100m-field-learning` proposals into their memories. |
 | Company CEO | Every company Paperclip/Hermes deployment | Ensure company priorities use the framework when appropriate; does not own all framework learning. |
 | Framework curator | Lee's personal Hermes profile or a dedicated framework-lab company | Pull field-learning proposals, dedupe them, auto-promote low-risk clarity/example changes, and escalate pattern/strategic changes. |
 
@@ -42,15 +42,13 @@ agent-stack skill into each profile:
 /data/hermes/profiles/<company-role>/skills/agent-stack/use-100m-framework
 ```
 
-No default GBrain database pages are copied. Each role keeps isolated memory and
-writes its own field-learning proposals.
+Each role keeps isolated memory and writes its own field-learning proposals.
 
 ## Pull
 
 Use a central inbox that Lee controls. Acceptable inboxes:
 
 - A private GitHub issue or discussion labeled `100m-field-learning`.
-- A personal GBrain inbox page under `inbox/100m-field-learning/`.
 - A dedicated Paperclip company or project named `$100M Framework Lab`.
 
 The first implementation should use GitHub issues because `gh` is already
