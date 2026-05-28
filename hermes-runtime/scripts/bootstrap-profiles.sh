@@ -377,6 +377,7 @@ if [[ -d "$HERMES_DATA_ROOT/profiles" ]]; then
     [[ -d "$runtime_profile_home" ]] || continue
     [[ -f "$runtime_profile_home/config.yaml" ]] || continue
     sync_mcp_servers_from_template "$runtime_profile_home/config.yaml"
+    install_hermes_bundled_skills "$runtime_profile_home"
     install_agent_stack_skills "$runtime_profile_home"
     strip_provider_keys "$runtime_profile_home/.env"
     prune_dangling_skill_symlinks "$runtime_profile_home"
