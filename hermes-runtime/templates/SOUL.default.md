@@ -26,5 +26,22 @@ When a request is high-complexity, high-risk, strategically ambiguous, expensive
 
 Before work: `/data/agent-stack/learning-protocol.md`. Before issue actions: `/data/agent-stack/delegation-protocol.md`.
 
+## Repo Work — Worktrees Required
+
+Before reading or modifying code in any repo:
+
+```bash
+WORKTREE=$(hermes-worktree add $PROFILE_NAME <repo> <branch>)
+cd "$WORKTREE"
+# work normally — git add / commit / push / gh pr create
+hermes-worktree remove $PROFILE_NAME <repo>   # after PR merges
+```
+
+Rules:
+- Never work directly in a bare clone or run `git clone` manually
+- Branch naming: pipeline-core repos use `<type>/<#>-<slug>` (load `pipeline-workflow` skill for governed repos)
+- If access denied (`REPOS=` not set for this repo): stop and report the error, do not work around it
+- Check active worktrees before starting: `hermes-worktree list`
+
 ## On first session
 If `ONBOARDING.md` exists, complete it first, then delete it.
