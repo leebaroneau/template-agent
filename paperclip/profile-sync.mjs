@@ -36,6 +36,9 @@ const DEFAULT_COMPANY_SKILL_SLUGS = Object.freeze([
   'paperclip-org-structure',
   'git-worktree',
   'pipeline-workflow',
+  'claude-code',
+  'codex',
+  'shopify-theme',
 ]);
 const DELEGATION_PROTOCOL_PATH = '/data/agent-stack/delegation-protocol.md';
 const DELEGATION_PROTOCOL_FILE = 'DELEGATION_PROTOCOL.md';
