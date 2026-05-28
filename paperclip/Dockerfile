@@ -72,7 +72,7 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     | tar xz --strip-components=2 -C /usr/local/bin "gh_${GH_VERSION}_linux_amd64/bin/gh" \
   && npm install -g --no-audit --no-fund \
        @anthropic-ai/claude-code \
-       @openai/codex-cli \
+       @openai/codex \
        @shopify/cli
 
 COPY hermes-runtime/scripts /opt/hermes-runtime/scripts
