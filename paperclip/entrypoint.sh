@@ -24,6 +24,11 @@ if [[ -f "$PROFILE_SYNC_ENV_FILE" ]]; then
   set +a
 fi
 
+if [[ -f /opt/paperclip/coolify-preview-env.mjs ]]; then
+  coolify_preview_exports="$(node /opt/paperclip/coolify-preview-env.mjs)"
+  eval "$coolify_preview_exports"
+fi
+
 export ORG_MIRROR_ROOT="${ORG_MIRROR_ROOT:-/data/agent-stack}"
 
 # Install per-brand state-repo SSH deploy key on container start so the
@@ -79,11 +84,8 @@ fi
 
 runuser -u node -- env HERMES_HOME="$HERMES_HOME" hermes --version
 
-eval "$(node /opt/paperclip/patch-paperclip-hermes-defaults.mjs env)"
-node /opt/paperclip/patch-hermes-profile-skill-count.mjs
 node /opt/paperclip/patch-hermes-adapter-env.mjs
 node /opt/paperclip/patch-hermes-adapter-skills-home.mjs
-node /opt/paperclip/patch-paperclip-hermes-defaults.mjs patch
 node /opt/paperclip/patch-paperclip-company-prefix.mjs
 node /opt/paperclip/patch-invite-auth-flow.mjs
 node /opt/paperclip/repair-paperclip-config.mjs
@@ -104,6 +106,9 @@ elif [[ -n "$_sync_key" ]]; then
     PROFILE_SYNC_INTERVAL_SEC="${PROFILE_SYNC_INTERVAL_SEC:-60}" \
     PROFILE_SYNC_DELETE_MODE="${PROFILE_SYNC_DELETE_MODE:-archive}" \
     PROFILE_SYNC_GRANT_MANAGER_ASSIGN_TASKS="${PROFILE_SYNC_GRANT_MANAGER_ASSIGN_TASKS:-1}" \
+    TOOL_ACCESS_SEED_ENABLED="${TOOL_ACCESS_SEED_ENABLED:-1}" \
+    TOOL_ACCESS_APPLY_DEFAULT_PRESET="${TOOL_ACCESS_APPLY_DEFAULT_PRESET:-1}" \
+    TOOL_ACCESS_DEFAULT_PRESET="${TOOL_ACCESS_DEFAULT_PRESET:-agent-stack-hermes-default}" \
     PROFILE_SYNC_MANIFEST_PATH="$PROFILE_SYNC_MANIFEST_PATH" \
     PROFILE_SYNC_TEMPLATE_DIR="$PROFILE_SYNC_TEMPLATE_DIR" \
     PAPERCLIP_API_BASE="${PROFILE_SYNC_API_BASE:-http://127.0.0.1:3100}" \

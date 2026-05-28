@@ -1,9 +1,49 @@
 #!/usr/bin/env node
 
+import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 
-const DEFAULT_HERMES_EXECUTE_PATH =
+const LEGACY_HERMES_EXECUTE_PATH =
   '/usr/local/lib/node_modules/paperclipai/node_modules/hermes-paperclip-adapter/dist/server/execute.js';
+
+const DEFAULT_RESOLVE_ANCHORS = [
+  '/opt/paperclip-src/server/src/index.ts',
+  '/opt/paperclip-src/server/dist/index.js',
+  '/usr/local/lib/node_modules/paperclipai/dist/index.js',
+  '/usr/local/lib/node_modules/paperclipai/node_modules/@paperclipai/server/dist/index.js',
+];
+
+export function resolveHermesAdapterServerFile(fileName, options = {}) {
+  const candidates = options.candidates ?? [
+    LEGACY_HERMES_EXECUTE_PATH,
+    `/opt/paperclip-src/server/node_modules/hermes-paperclip-adapter/dist/server/${fileName}`,
+  ];
+  const anchors = options.anchors ?? DEFAULT_RESOLVE_ANCHORS;
+  const checked = [];
+
+  for (const candidate of candidates) {
+    checked.push(candidate);
+    if (existsSync(candidate)) return candidate;
+  }
+
+  for (const anchor of anchors) {
+    try {
+      const require = createRequire(anchor);
+      const serverIndexPath = require.resolve('hermes-paperclip-adapter/server');
+      const candidate = join(dirname(serverIndexPath), fileName);
+      checked.push(candidate);
+      if (existsSync(candidate)) return candidate;
+    } catch {
+      checked.push(`${anchor} -> hermes-paperclip-adapter/server`);
+    }
+  }
+
+  throw new Error(
+    `[agent-stack] Could not locate hermes-paperclip-adapter dist/server/${fileName}. Checked: ${checked.join(', ')}`,
+  );
+}
 
 export function patchHermesAdapterExecuteSource(source) {
   let patched = source;
@@ -152,7 +192,7 @@ export function patchHermesAdapterExecuteSource(source) {
 }
 
 export async function patchHermesAdapterExecuteFile(
-  filePath = process.env.HERMES_ADAPTER_EXECUTE_PATH || DEFAULT_HERMES_EXECUTE_PATH,
+  filePath = process.env.HERMES_ADAPTER_EXECUTE_PATH || resolveHermesAdapterServerFile('execute.js'),
 ) {
   const source = await readFile(filePath, 'utf8');
   const patched = patchHermesAdapterExecuteSource(source);

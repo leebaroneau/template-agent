@@ -53,6 +53,50 @@ The Paperclip MCP server (see below) closes the loop: Hermes-side agents can fil
 - `hermes` bootstraps Hermes profiles and starts configured gateways. It only runs the dashboard on port `9119` when `HERMES_DASHBOARD_ENABLED=1`.
 - Both services share the `paperclip-data` volume at `/data`.
 
+## Image Tags and Preview Deployments
+
+`compose.yaml` currently builds the Paperclip/Hermes stack directly from the checked-out repository and lets Compose/Coolify tag each service locally. This keeps PR previews testable while GHCR publishing is paused.
+
+The GitHub image workflow can still publish production images when re-enabled. Preview images are manual so normal pull requests stay fast:
+
+| Event | Tags |
+|---|---|
+| Push or manual dispatch on `main` | `latest`, `paperclip-<version>`, `sha-<commit>` |
+| Manual dispatch on a non-`main` branch | `sha-<commit>` |
+| Pull request | No image is published automatically |
+
+The workflow publishes to `ghcr.io/leebaroneau/template-agent`, matching the GitHub repository name. To return deployments to registry pulls later, restore the compose image reference and `pull_policy` alongside the workflow.
+
+Main branch image builds always publish the full multi-arch `linux/amd64,linux/arm64` image on GitHub's standard x64 Ubuntu runner. Manual branch builds default to `linux/arm64` and run on GitHub's native `ubuntu-24.04-arm` runner for local Coolify previews on Colima. Choose `linux/amd64,linux/arm64` manually only when a branch preview needs production parity.
+
+To publish a preview image for a branch, dispatch the workflow against that branch:
+
+```bash
+gh workflow run build-image.yml --ref <branch> -f platforms=linux/arm64
+```
+
+For registry-backed Coolify preview deployments, prefer the commit tag so one generic preview variable works for every PR:
+
+```dotenv
+AGENT_STACK_IMAGE=ghcr.io/leebaroneau/template-agent:sha-$SOURCE_COMMIT
+```
+
+Set that as a **Preview Deployment Environment Variable** in Coolify with variable interpolation enabled (do not mark it literal) only after registry-backed previews are turned back on. Coolify provides `SOURCE_COMMIT` for each deployment, so PR #17 and PR #18 pull their own image without manually changing `AGENT_STACK_IMAGE`. If a PR gets new commits, dispatch the image workflow again before redeploying that preview.
+
+Paperclip adopts Coolify's preview `SERVICE_URL_PAPERCLIP` and `SERVICE_FQDN_PAPERCLIP` at container start for PR previews, so preview hostnames are added to `PAPERCLIP_ALLOWED_HOSTNAMES` automatically. For Cloudflare Universal SSL, use one-label preview hostnames like `paperclip-pr-17.example.com`; nested names like `17.paperclip.example.com` usually require an additional wildcard certificate.
+
+Do not use a shared tag like `:pr` unless you intentionally only ever run one PR preview at a time. A single shared PR tag would be overwritten by whichever branch built last.
+
+## Paperclip Version
+
+This draft template branch builds Paperclip from `PAPERCLIP_GIT_REPO` / `PAPERCLIP_GIT_REF`, currently `paperclipai/paperclip` PR #6243. That stacked PR includes the runtime identity and tool access API work from PRs #6230, #6242, and #6243.
+
+Do not clear `PAPERCLIP_GIT_REF` on this branch until those Paperclip changes have shipped in the published `paperclipai` package; the removed Hermes defaults patch is now owned by PR #6230. To return this template to the normal release path after publish, build with `PAPERCLIP_GIT_REF=` and bump the `PAPERCLIP_VERSION` Docker build arg. `profile-sync.mjs` now adopts Paperclip's `metadata.runtimeIdentity.profileSlug` and `metadata.runtimeIdentity.hermesHome` when present, then falls back to its legacy `/data/hermes/profiles/<company-role>` layout for older Paperclip builds.
+
+When `PAPERCLIP_GIT_REF` is set, the image keeps the checked-out Paperclip workspace at `/opt/paperclip-src` and runs the CLI through `tsx`. This is intentional for the draft branch: packing only `./cli` would pull the published `@paperclipai/server` package from npm and would not actually test the PR's server, DB, shared, UI, and adapter-utils changes.
+
+The tool access seed below is safe to run before those Paperclip APIs exist: on older Paperclip builds it receives a 404, logs a skip, and leaves the stack unchanged.
+
 ## /data Volume Layout
 
 Everything persistent lives under `/data`, mounted from the `paperclip-data` Docker volume.
@@ -61,6 +105,7 @@ Everything persistent lives under `/data`, mounted from the `paperclip-data` Doc
 |---|---|
 | `/data/paperclip.db` | Paperclip's SQLite database (companies, agents, issues, approvals, runs) |
 | `/data/instances/<company-slug>/` | Per-company project files, plan documents, attachments |
+| `/data/instances/<company-slug>/runtimes/hermes/profiles/<runtime-id>/` | Paperclip-owned Hermes runtime identity profile homes, adopted by profile-sync when present |
 | `/data/hermes/` | Default Hermes profile (config, skills, kanban, memory) |
 | `/data/hermes/profiles/<company-role>/` | Per-agent isolated Hermes profile (auto-created by profile-sync) |
 | `/data/hermes/archive/` | Archived profiles for terminated agents (`PROFILE_SYNC_DELETE_MODE=archive`) |
@@ -233,6 +278,12 @@ If Coolify skips a deploy or keeps running an older built image, trigger a force
 
 Because production deploys pull prebuilt images, recovery should be a rollback to the previous known-good `ghcr.io/leebaroneau/template-agent:sha-<commit>` tag followed by a Coolify redeploy. Do not force a production-host image rebuild as the first recovery step.
 
+To trigger a force redeploy across all Coolify deployments, use the `force` dispatch input:
+
+```bash
+gh workflow run build-image.yml --ref main -f force=true
+```
+
 ### Coolify env variable checklist
 
 **Required for any deployment:**
@@ -262,6 +313,9 @@ PROFILE_SYNC_GRANT_MANAGER_ASSIGN_TASKS=1
 PROFILE_SYNC_HERMES_MODEL_MODE=inherit
 PROFILE_SYNC_DEFAULT_COMPANY_SKILLS=use-100m-framework
 PAPERCLIP_PROFILE_SYNC_API_KEY=<pcp_board_...>   # same key as PAPERCLIP_API_KEY is fine
+TOOL_ACCESS_SEED_ENABLED=1
+TOOL_ACCESS_APPLY_DEFAULT_PRESET=1
+TOOL_ACCESS_DEFAULT_PRESET=agent-stack-hermes-default
 ```
 
 Profile sync also grants `canAssignTasks` to active agents that have direct reports, preserving their existing `canCreateAgents` setting. Disable with `PROFILE_SYNC_GRANT_MANAGER_ASSIGN_TASKS=0` if a deployment wants CEO-only task assignment.
@@ -329,7 +383,7 @@ If you find a `routers.https-0-<some-uuid>-...` or `routers.http-0-<some-uuid>-.
 
 The blank Hermes config is intentionally empty, with one exception: a Paperclip MCP server is wired in by default so Hermes agents in any new setup can file and track work in Paperclip through typed tool calls instead of constructing shell `curl` commands. Seeded agents and profile-sync-managed agents also get the Hermes `mcp` toolset in their Paperclip adapter config by default, so the profile config and the runtime tool access stay aligned.
 
-The server lives at `paperclip/mcp-paperclip/` and is baked into the image at `/opt/paperclip/mcp-paperclip/`. It is registered in `hermes-runtime/templates/config.yaml` under `mcp_servers.paperclip`, exposing eight tools to every Hermes profile:
+The server lives at `paperclip/mcp-paperclip/` and is baked into the image at `/opt/paperclip/mcp-paperclip/`. It is registered in `hermes-runtime/templates/config.yaml` under `mcp_servers.paperclip`, exposing eight tools to every Hermes profile as the blank-template fallback:
 
 ```text
 paperclip_list_companies
@@ -355,6 +409,8 @@ If both are blank the server still starts but every tool call fails with an auth
 
 Optional convenience env: set `PAPERCLIP_DEFAULT_COMPANY_ID=<uuid>` so single-company setups don't need to pass `companyId` on every tool call.
 
+On Paperclip builds with company tool access APIs, profile-sync seeds matching Paperclip MCP tool records and the selected preset renders per-agent `mcp_servers.paperclip.tools.include` lists into each `hermes_local` agent's adapter config.
+
 Health check from inside the container:
 
 ```bash
@@ -366,7 +422,7 @@ A healthy server replies with `serverInfo: {"name":"paperclip","version":"0.1.0"
 
 ### Propagation to existing profiles
 
-When you (or an upstream update) add a new MCP server to `hermes-runtime/templates/config.yaml`, the `bootstrap-profiles.sh` entrypoint script idempotently merges any *missing* `mcp_servers.*` entries into every profile config on the next container start — both `HERMES_PROFILES`-listed profiles AND per-role profiles that `profile-sync.mjs` created at runtime under `/data/hermes/profiles/`. Existing entries are never overwritten, so per-profile customisations are preserved. New servers added to the template propagate to every Hermes profile automatically without a manual patch.
+When you (or an upstream update) add a new MCP server to `hermes-runtime/templates/config.yaml`, the `bootstrap-profiles.sh` entrypoint script idempotently merges any *missing* `mcp_servers.*` entries into every profile config on the next container start — both `HERMES_PROFILES`-listed profiles and per-role profiles that `profile-sync.mjs` creates from Paperclip runtime identity metadata under `/data/instances/default/runtimes/hermes/profiles/` (falling back to `/data/hermes/profiles/` for older Paperclip builds). Existing entries are never overwritten, so per-profile customisations are preserved. New servers added to the template propagate to every Hermes profile automatically without a manual patch.
 
 **Brand overlays.** Brand wrappers (e.g. `agent-genvest`) can contribute additional `mcp_servers` entries without modifying or forking this image. Drop YAML files into `/opt/hermes-runtime/templates/overlays/*.yaml` — typically via Docker Compose `configs:` mounts on both the `paperclip` and `hermes` services — and `bootstrap-profiles.sh` merges each file's `mcp_servers.*` into the effective template before merging that into each profile. The merge is strictly additive at both layers: the canonical `config.yaml` wins over any overlay on key collision, and existing profile entries always win over the effective template. Among overlays, alphabetic-first filename wins on collision.
 
@@ -390,19 +446,19 @@ To add your own agent-stack-wide skills, drop a `SKILL.md` (with optional `refer
 
 ## Runtime Patches
 
-The `paperclip` container's entrypoint runs four small Node patches against Paperclip's bundled npm package before starting the server. These rewrite a few lines in place each boot so the agent stack behaves correctly:
+The `paperclip` container's entrypoint runs three small Node patches against the installed Paperclip runtime before starting the server. These rewrite a few lines in place each boot so the agent stack behaves correctly; the patch scripts resolve both the published npm layout and the `/opt/paperclip-src` PR-source layout used on this draft branch.
 
 | Patch | What it changes |
 |---|---|
-| `patch-paperclip-hermes-defaults.mjs` | When Paperclip creates a `hermes_local` agent, inject `HERMES_MODEL` / `HERMES_PROVIDER` defaults from the Hermes profile config so newly-hired agents don't fall back to the bundled adapter's hardcoded Anthropic model. |
-| `patch-hermes-adapter-env.mjs` | Unwrap Paperclip's env-binding objects when passing to the Hermes child process. Without this, `HERMES_HOME` and `PAPERCLIP_API_URL` reach Hermes as objects instead of strings. |
+| `patch-hermes-adapter-env.mjs` | Unwrap Paperclip's env-binding objects when passing to the Hermes child process. Without this, `HERMES_HOME`, `GBRAIN_HOME`, and `PAPERCLIP_API_URL` reach Hermes as objects instead of strings. |
 | `patch-hermes-adapter-skills-home.mjs` | Rewrite `hermes-paperclip-adapter`'s `listSkills` so it scans `<HERMES_HOME>/skills/` (instead of always `$HOME/.hermes/skills/`) and follows symlinks at both the category and item levels. Without this, every per-role profile that profile-sync creates reports 0 skills in Paperclip's UI/API even though Hermes itself loads them fine. |
 | `patch-paperclip-company-prefix.mjs` | Relax Paperclip's company URL-key prefix constraints to allow the slugs the agent stack uses. |
 
-All four are idempotent and re-applied on every container start. If you upgrade Paperclip (`PAPERCLIP_VERSION` build arg), re-run the patch tests:
+Paperclip PR #6230 owns Hermes runtime identity and model defaults, so this template no longer ships `patch-paperclip-hermes-defaults.mjs`.
+
+The remaining three patches are idempotent and re-applied on every container start. The tool access seed does not replace these patches; keep them until the matching behavior has shipped upstream and the patch tests prove they are no longer needed. If you upgrade Paperclip (`PAPERCLIP_VERSION` build arg) or change `PAPERCLIP_GIT_REF`, re-run the patch tests:
 
 ```bash
-node paperclip/patch-paperclip-hermes-defaults.test.mjs
 node paperclip/patch-hermes-adapter-env.test.mjs
 node paperclip/patch-hermes-adapter-skills-home.test.mjs
 node paperclip/patch-paperclip-company-prefix.test.mjs
@@ -425,6 +481,31 @@ The script POSTs or PATCHes a single `Hermes` agent per company with:
 - `capabilities` pointing the agent at the shared delegation protocol and org chart
 
 Re-running is safe: existing agents are patched, not duplicated.
+
+## Tool Access Seed
+
+`paperclip/seed-tool-access.mjs` seeds the company-level tool catalog and role presets used by Paperclip's tool access matrix. Profile-sync invokes it automatically after reconciling Hermes profiles when `TOOL_ACCESS_SEED_ENABLED=1`.
+
+The default catalog contains Hermes adapter toolsets (`terminal`, `file`, `web`) and the bundled Paperclip MCP tools. The default `agent-stack-hermes-default` preset grants the same broad access the template historically gave Hermes agents, but routes it through Paperclip's auditable grant model when the API is available.
+
+```env
+TOOL_ACCESS_SEED_ENABLED=1
+TOOL_ACCESS_APPLY_DEFAULT_PRESET=1
+TOOL_ACCESS_DEFAULT_PRESET=agent-stack-hermes-default
+```
+
+Re-running is safe. The script creates missing tools and presets only, and it applies the default preset only when an active `hermes_local` agent does not already have the matching grants. On Paperclip builds without the tool access API it logs a skip and makes no changes.
+
+Company selection follows the same scope as profile sync: leave `PAPERCLIP_COMPANY_IDS` blank to seed every accessible company, or set a comma-separated list such as `PAPERCLIP_COMPANY_IDS=co_123,co_456`.
+
+Manual run:
+
+```bash
+PAPERCLIP_API_BASE=http://localhost:3100 \
+PAPERCLIP_API_KEY=<pcp_board_...> \
+PAPERCLIP_COMPANY_IDS=<company-uuid> \
+node paperclip/seed-tool-access.mjs
+```
 
 ## 100M Framework Learning Loop
 
@@ -465,6 +546,9 @@ PROFILE_SYNC_ENABLED=1
 PROFILE_SYNC_INTERVAL_SEC=60
 PROFILE_SYNC_DELETE_MODE=archive
 PAPERCLIP_PROFILE_SYNC_API_KEY=<pcp_board_...>
+TOOL_ACCESS_SEED_ENABLED=1
+TOOL_ACCESS_APPLY_DEFAULT_PRESET=1
+TOOL_ACCESS_DEFAULT_PRESET=agent-stack-hermes-default
 ```
 
 Every `hermes_local` Paperclip agent gets:

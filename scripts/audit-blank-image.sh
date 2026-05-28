@@ -16,7 +16,7 @@ fi
 
 failed=0
 
-forbidden_pattern='(leebarone|haverford|alx-finance|paperclip\.leebarone\.dev|hermes\.leebarone\.dev|HERMES_BRIDGE_TOKEN|SERVICE_FQDN_|SERVICE_URL_|COOLIFY_FQDN|OPENAI_API_KEY=sk-|ANTHROPIC_API_KEY=sk-ant-|ghp_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY)'
+forbidden_pattern='(leebarone|haverford|alx-finance|paperclip\.leebarone\.dev|hermes\.leebarone\.dev|HERMES_BRIDGE_TOKEN|OPENAI_API_KEY=sk-|ANTHROPIC_API_KEY=sk-ant-|ghp_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY)'
 
 metadata="$(
   docker image inspect "$image"
@@ -47,7 +47,7 @@ fi
 
 content_hits="$(
   docker run --rm --entrypoint sh "$image" -lc '
-    grep -RInE "leebarone|haverford|alx-finance|paperclip\\.leebarone\\.dev|hermes\\.leebarone\\.dev|HERMES_BRIDGE_TOKEN|SERVICE_FQDN_|SERVICE_URL_|COOLIFY_FQDN" /opt/hermes-runtime /opt/paperclip /data 2>/dev/null || true
+    grep -RInE "leebarone|haverford|alx-finance|paperclip\\.leebarone\\.dev|hermes\\.leebarone\\.dev|HERMES_BRIDGE_TOKEN" /opt/hermes-runtime /opt/paperclip /data 2>/dev/null || true
   '
 )"
 

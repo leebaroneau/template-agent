@@ -2,11 +2,15 @@
 FROM node:22-bookworm-slim
 
 ARG PAPERCLIP_VERSION=2026.513.0
+ARG PAPERCLIP_GIT_REPO=https://github.com/paperclipai/paperclip.git
+ARG PAPERCLIP_GIT_REF=refs/pull/6243/head
 ARG HERMES_AGENT_REF=v2026.5.16
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PAPERCLIP_HOME=/data
 ENV PAPERCLIP_TELEMETRY_DISABLED=1
+ENV PAPERCLIP_UI_DEV_MIDDLEWARE=false
+ENV PAPERCLIP_SOURCE_DIR=/opt/paperclip-src
 ENV HERMES_DATA_ROOT=/data/hermes
 ENV HERMES_HOME=/data/hermes
 ENV HERMES_TUI_DIR=/usr/local/lib/hermes-agent/ui-tui
@@ -62,7 +66,23 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
   && ln -sf "$HERMES_SRC/venv/bin/hermes" /usr/local/bin/hermes
 
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-    npm install -g "paperclipai@${PAPERCLIP_VERSION}"
+    if [ -n "${PAPERCLIP_GIT_REF}" ]; then \
+      git clone --filter=blob:none "${PAPERCLIP_GIT_REPO}" "${PAPERCLIP_SOURCE_DIR}" \
+      && cd "${PAPERCLIP_SOURCE_DIR}" \
+      && git fetch --depth 1 origin "${PAPERCLIP_GIT_REF}" \
+      && git checkout FETCH_HEAD \
+      && npm install -g pnpm@9.15.4 \
+      && pnpm config set store-dir /opt/pnpm-store \
+      && pnpm install --frozen-lockfile \
+      && pnpm build \
+      && PAPERCLIP_RELEASE_REUSE_UI_DIST=1 pnpm --filter @paperclipai/server prepare:ui-dist \
+      && printf '%s\n' '#!/usr/bin/env bash' 'exec node /opt/paperclip-src/cli/node_modules/tsx/dist/cli.mjs /opt/paperclip-src/cli/src/index.ts "$@"' > /usr/local/bin/paperclipai \
+      && chmod +x /usr/local/bin/paperclipai \
+      && npm uninstall -g pnpm \
+      && paperclipai --version; \
+    else \
+      npm install -g "paperclipai@${PAPERCLIP_VERSION}"; \
+    fi
 
 # Coding CLIs available to all agent profiles with terminal toolset enabled.
 # gh: repo/PR/issue ops; claude-code + codex: coding agent delegation.
@@ -83,15 +103,16 @@ COPY paperclip/learning-protocol.md /opt/paperclip/learning-protocol.md
 COPY paperclip/important-information-index.md /opt/paperclip/important-information-index.md
 COPY paperclip/entrypoint.sh /opt/paperclip/entrypoint.sh
 COPY paperclip/hermes-entrypoint.sh /opt/paperclip/hermes-entrypoint.sh
+COPY paperclip/coolify-preview-env.mjs /opt/paperclip/coolify-preview-env.mjs
 COPY paperclip/pre-deploy-backup.sh /opt/paperclip/pre-deploy-backup.sh
 COPY paperclip/patch-hermes-adapter-env.mjs /opt/paperclip/patch-hermes-adapter-env.mjs
 COPY paperclip/patch-hermes-adapter-skills-home.mjs /opt/paperclip/patch-hermes-adapter-skills-home.mjs
 COPY paperclip/patch-hermes-profile-skill-count.mjs /opt/paperclip/patch-hermes-profile-skill-count.mjs
 COPY paperclip/patch-paperclip-company-prefix.mjs /opt/paperclip/patch-paperclip-company-prefix.mjs
 COPY paperclip/patch-invite-auth-flow.mjs /opt/paperclip/patch-invite-auth-flow.mjs
-COPY paperclip/patch-paperclip-hermes-defaults.mjs /opt/paperclip/patch-paperclip-hermes-defaults.mjs
 COPY paperclip/repair-paperclip-config.mjs /opt/paperclip/repair-paperclip-config.mjs
 COPY paperclip/profile-sync.mjs /opt/paperclip/profile-sync.mjs
+COPY paperclip/seed-tool-access.mjs /opt/paperclip/seed-tool-access.mjs
 COPY paperclip/narrow-grants.mjs /opt/paperclip/narrow-grants.mjs
 COPY paperclip/mcp-paperclip /opt/paperclip/mcp-paperclip
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \

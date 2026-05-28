@@ -45,6 +45,10 @@ for file in \
   "scripts/render-coolify-compose.sh" \
   "scripts/validate-env.sh"; do
   check_absent "$file" 'hermes-ui|HERMES_UI' "service should be named hermes"
+  # \bleebarone\b uses word boundaries so it catches "leebarone" and
+  # "leebarone.dev" but NOT the shared image registry user "leebaroneau"
+  # in `ghcr.io/leebaroneau/template-agent:latest`, which is the
+  # canonical image all three deployments pull from (see README).
   check_absent "$file" 'Lee'\''s|\bleebarone\b|haverford|alx-finance|paperclip\.leebarone\.dev|hermes\.leebarone\.dev|HERMES_BRIDGE_TOKEN|SERVICE_FQDN_|SERVICE_URL_|COOLIFY_FQDN' "template should not include live client or deployment values"
   check_absent "$file" 'AGENT_STACK_''IMAGE' "template should not reference legacy registry image identity"
 done
@@ -81,6 +85,39 @@ fi
 
 if ! grep -nE 'COPY paperclip/important-information-index\.md /opt/paperclip/important-information-index\.md' paperclip/Dockerfile >/dev/null 2>&1; then
   echo "Dockerfile should copy the important information index seed into the image." >&2
+  failed=1
+fi
+
+check_absent "paperclip/Dockerfile" 'patch-paperclip-hermes-defaults' "Paperclip PR1 owns Hermes runtime identity/model defaults"
+check_absent "paperclip/entrypoint.sh" 'patch-paperclip-hermes-defaults' "Paperclip entrypoint should not run the removed Hermes defaults patch"
+
+if grep -nE 'npm install -g \./cli' paperclip/Dockerfile >/dev/null 2>&1; then
+  echo "Paperclip git builds should install a packed CLI tarball, not a global symlink to the temporary clone." >&2
+  failed=1
+fi
+
+if ! grep -nE 'git clone --filter=blob:none "\$\{PAPERCLIP_GIT_REPO\}" "\$\{PAPERCLIP_SOURCE_DIR\}"' paperclip/Dockerfile >/dev/null 2>&1; then
+  echo "Paperclip git builds should clone PR source into PAPERCLIP_SOURCE_DIR so server/shared/db PR changes are tested together." >&2
+  failed=1
+fi
+
+if ! grep -nE 'pnpm config set store-dir /opt/pnpm-store' paperclip/Dockerfile >/dev/null 2>&1; then
+  echo "Paperclip git builds should keep the pnpm store inside the image for the source runtime." >&2
+  failed=1
+fi
+
+if ! grep -nE 'cli/node_modules/tsx/dist/cli\.mjs /opt/paperclip-src/cli/src/index\.ts' paperclip/Dockerfile >/dev/null 2>&1; then
+  echo "Paperclip git builds should run the PR workspace through tsx instead of pulling the published server package." >&2
+  failed=1
+fi
+
+if ! grep -nE 'npm uninstall -g pnpm' paperclip/Dockerfile >/dev/null 2>&1; then
+  echo "Paperclip git builds should uninstall build-only pnpm before the final image layer." >&2
+  failed=1
+fi
+
+if ! grep -nE 'PAPERCLIP_UI_DEV_MIDDLEWARE=false' paperclip/Dockerfile >/dev/null 2>&1; then
+  echo "Paperclip source-runtime images should disable UI dev middleware and serve built UI assets." >&2
   failed=1
 fi
 

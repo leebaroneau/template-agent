@@ -1,7 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
-import { patchHermesAdapterExecuteSource } from './patch-hermes-adapter-env.mjs';
+import {
+  patchHermesAdapterExecuteSource,
+  resolveHermesAdapterServerFile,
+} from './patch-hermes-adapter-env.mjs';
+
+async function createFakeHermesAdapterPackage() {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'paperclip-hermes-adapter-'));
+  const packageRoot = path.join(root, 'server', 'node_modules', 'hermes-paperclip-adapter');
+  const serverDir = path.join(packageRoot, 'dist', 'server');
+  await mkdir(serverDir, { recursive: true });
+  await writeFile(
+    path.join(packageRoot, 'package.json'),
+    JSON.stringify({
+      name: 'hermes-paperclip-adapter',
+      type: 'module',
+      exports: {
+        './server': './dist/server/index.js',
+      },
+    }),
+  );
+  await writeFile(path.join(serverDir, 'index.js'), 'export {};\n');
+  await writeFile(path.join(serverDir, 'execute.js'), 'export {};\n');
+  return {
+    anchor: path.join(root, 'server', 'src', 'index.ts'),
+    executePath: await realpath(path.join(serverDir, 'execute.js')),
+  };
+}
 
 test('patchHermesAdapterExecuteSource unwraps Paperclip env value objects', () => {
   const source = `
@@ -76,4 +105,12 @@ test('patchHermesAdapterExecuteSource is idempotent', () => {
 `;
 
   assert.equal(patchHermesAdapterExecuteSource(source), source);
+});
+
+test('resolveHermesAdapterServerFile resolves source workspace adapter installs', async () => {
+  const fake = await createFakeHermesAdapterPackage();
+  assert.equal(
+    resolveHermesAdapterServerFile('execute.js', { anchors: [fake.anchor], candidates: [] }),
+    fake.executePath,
+  );
 });

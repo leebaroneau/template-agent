@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      force:
+        description: 'Pass force=true to the Coolify deploy webhooks (overrides skip-if-no-change check).'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -50,3 +55,27 @@ jobs:
           if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
             docker push "$REMOTE_IMAGE:latest"
           fi
+
+      - name: Trigger ALX Coolify deploy
+        if: success() && github.ref == 'refs/heads/main' && vars.COOLIFY_ALX_BASE_URL != '' && vars.COOLIFY_ALX_APP_UUID != ''
+        run: |
+          curl -sf -X GET \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_ALX_TOKEN }}" \
+            "${{ vars.COOLIFY_ALX_BASE_URL }}/api/v1/deploy?uuid=${{ vars.COOLIFY_ALX_APP_UUID }}&force=${{ inputs.force || 'false' }}" \
+            || echo "ALX deploy trigger failed (non-fatal)"
+
+      - name: Trigger leebarone Coolify deploy
+        if: success() && github.ref == 'refs/heads/main' && vars.COOLIFY_LEEBARONE_BASE_URL != '' && vars.COOLIFY_LEEBARONE_APP_UUID != ''
+        run: |
+          curl -sf -X GET \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_LEEBARONE_TOKEN }}" \
+            "${{ vars.COOLIFY_LEEBARONE_BASE_URL }}/api/v1/deploy?uuid=${{ vars.COOLIFY_LEEBARONE_APP_UUID }}&force=${{ inputs.force || 'false' }}" \
+            || echo "leebarone deploy trigger failed (non-fatal)"
+
+      - name: Trigger Genvest Coolify deploy
+        if: success() && github.ref == 'refs/heads/main' && vars.COOLIFY_GENVEST_BASE_URL != '' && vars.COOLIFY_GENVEST_APP_UUID != ''
+        run: |
+          curl -sf -X GET \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_GENVEST_TOKEN }}" \
+            "${{ vars.COOLIFY_GENVEST_BASE_URL }}/api/v1/deploy?uuid=${{ vars.COOLIFY_GENVEST_APP_UUID }}&force=${{ inputs.force || 'false' }}" \
+            || echo "Genvest deploy trigger failed (non-fatal)"

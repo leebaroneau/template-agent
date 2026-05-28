@@ -1,3 +1,9 @@
+x-agent-stack-build: &agent-stack-build
+  pull_policy: build
+  build:
+    context: .
+    dockerfile: paperclip/Dockerfile
+
 services:
   paperclip:
     image: ${TEMPLATE_AGENT_IMAGE:-ghcr.io/leebaroneau/template-agent:latest}
@@ -28,6 +34,9 @@ services:
       PROFILE_SYNC_DELETE_MODE: ${PROFILE_SYNC_DELETE_MODE:-archive}
       PROFILE_SYNC_MANIFEST_PATH: /data/agent-stack/profile-sync/manifest.json
       PROFILE_SYNC_TEMPLATE_DIR: /opt/hermes-runtime/templates
+      TOOL_ACCESS_SEED_ENABLED: ${TOOL_ACCESS_SEED_ENABLED:-1}
+      TOOL_ACCESS_APPLY_DEFAULT_PRESET: ${TOOL_ACCESS_APPLY_DEFAULT_PRESET:-1}
+      TOOL_ACCESS_DEFAULT_PRESET: ${TOOL_ACCESS_DEFAULT_PRESET:-agent-stack-hermes-default}
       PROFILE_SYNC_DEFAULT_COMPANY_SKILLS: ${PROFILE_SYNC_DEFAULT_COMPANY_SKILLS:-use-100m-framework}
       PROFILE_SYNC_DEFAULT_COMPANY_SKILL_SOURCE_DIR: ${PROFILE_SYNC_DEFAULT_COMPANY_SKILL_SOURCE_DIR:-/opt/hermes-runtime/skills}
       ORG_MIRROR_ROOT: ${ORG_MIRROR_ROOT:-/data/agent-stack}
@@ -43,14 +52,6 @@ services:
       - "3100"
     volumes:
       - paperclip-data:/data
-    labels:
-      - traefik.enable=true
-      - traefik.http.middlewares.gzip.compress=true
-      - traefik.http.routers.paperclip.entryPoints=http
-      - traefik.http.routers.paperclip.middlewares=gzip
-      - traefik.http.routers.paperclip.rule=Host(`${PAPERCLIP_HOSTNAME:-paperclip.example.com}`)
-      - traefik.http.routers.paperclip.service=paperclip
-      - traefik.http.services.paperclip.loadbalancer.server.port=3100
     restart: unless-stopped
 
   hermes:

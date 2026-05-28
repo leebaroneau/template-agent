@@ -1,7 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
-import { patchHermesAdapterSkillsHomeSource } from './patch-hermes-adapter-skills-home.mjs';
+import {
+  patchHermesAdapterSkillsHomeSource,
+  resolveHermesAdapterServerFile,
+} from './patch-hermes-adapter-skills-home.mjs';
+
+async function createFakeHermesAdapterPackage() {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'paperclip-hermes-adapter-'));
+  const packageRoot = path.join(root, 'server', 'node_modules', 'hermes-paperclip-adapter');
+  const serverDir = path.join(packageRoot, 'dist', 'server');
+  await mkdir(serverDir, { recursive: true });
+  await writeFile(
+    path.join(packageRoot, 'package.json'),
+    JSON.stringify({
+      name: 'hermes-paperclip-adapter',
+      type: 'module',
+      exports: {
+        './server': './dist/server/index.js',
+      },
+    }),
+  );
+  await writeFile(path.join(serverDir, 'index.js'), 'export {};\n');
+  await writeFile(path.join(serverDir, 'skills.js'), 'export {};\n');
+  return {
+    anchor: path.join(root, 'server', 'src', 'index.ts'),
+    skillsPath: await realpath(path.join(serverDir, 'skills.js')),
+  };
+}
 
 const PRISTINE_SOURCE = `
 async function buildHermesSkillSnapshot(config) {
@@ -144,4 +173,12 @@ ${body.replace('async function buildHermesSkillSnapshot(config) {', '').replace(
   assert.equal(probe({ env: {} }), '/home/node/.hermes/skills');
   assert.equal(probe({ env: { HERMES_HOME: '   ' } }), '/home/node/.hermes/skills');
   assert.equal(probe({}), '/home/node/.hermes/skills');
+});
+
+test('resolveHermesAdapterServerFile resolves source workspace adapter installs', async () => {
+  const fake = await createFakeHermesAdapterPackage();
+  assert.equal(
+    resolveHermesAdapterServerFile('skills.js', { anchors: [fake.anchor], candidates: [] }),
+    fake.skillsPath,
+  );
 });
