@@ -43,6 +43,10 @@ Run from the repo root. Codex runs in a sandboxed environment and applies change
 2. Review changes before committing — Codex is fast but may overshoot
 3. Post a summary comment on the Paperclip issue
 
+## Skills available to Codex
+
+`obra/superpowers` is pre-installed into the image at `/opt/plugins/superpowers` and symlinked into `/home/node/.codex/skills/`. Codex subagent sessions have access to: `brainstorming`, `systematic-debugging`, `test-driven-development`, `writing-plans`, `executing-plans`, `dispatching-parallel-agents`, and the full code-review cycle.
+
 ## Auth
 
 Requires `OPENAI_API_KEY` in the container env, OR route through `hermes proxy` if using ChatGPT OAuth subscription.

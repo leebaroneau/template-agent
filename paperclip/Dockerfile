@@ -95,6 +95,18 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
        @openai/codex \
        @shopify/cli
 
+# Pre-install obra/superpowers methodology skills for Claude Code and Codex subagents.
+# Baked into the image because /home/node/.claude and /home/node/.codex are NOT on the
+# /data volume — runtime installs are wiped on every redeploy.
+# Claude Code loads the plugin via --plugin-dir on each invocation (see claude-code skill).
+# Codex discovers skills from ~/.codex/skills/ — symlink each skill directory there.
+RUN git clone --depth 1 https://github.com/obra/superpowers /opt/plugins/superpowers \
+ && mkdir -p /home/node/.codex/skills \
+ && for skill_dir in /opt/plugins/superpowers/skills/*/; do \
+      ln -sfn "$skill_dir" "/home/node/.codex/skills/$(basename "$skill_dir")"; \
+    done \
+ && chown -R node:node /home/node/.codex
+
 COPY hermes-runtime/scripts /opt/hermes-runtime/scripts
 COPY hermes-runtime/templates /opt/hermes-runtime/templates
 COPY hermes-runtime/skills /opt/hermes-runtime/skills

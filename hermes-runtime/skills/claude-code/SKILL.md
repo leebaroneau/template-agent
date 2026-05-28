@@ -18,6 +18,7 @@ Delegate coding work to the `claude` CLI subprocess. Claude Code is best for: mu
 
 ```bash
 claude -p "<task description>" \
+  --plugin-dir /opt/plugins/superpowers \
   --allowedTools "Read,Edit,Write,Bash,Glob,Grep" \
   --max-turns 20 \
   --output-format json \
