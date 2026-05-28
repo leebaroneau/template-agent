@@ -110,7 +110,10 @@ ASKPASS
     --exclude='hermes/profiles/*/audio_cache' \
     --exclude='*/__pycache__' \
     -C /data \
-    hermes/profiles hermes/SOUL.md hermes/auth.json hermes/.env hermes/cron hermes/hooks 2>/dev/null || true
+    hermes/profiles hermes/SOUL.md hermes/auth.json hermes/.env hermes/cron hermes/hooks \
+    $(test -f /data/agent-stack/repo-access.yml && echo agent-stack/repo-access.yml || true) \
+    $(test -d /data/repos/worktrees && echo repos/worktrees || true) \
+    2>/dev/null || true
 
   # 4. Clone (or refresh) the state repo via the deploy key
   log "Refreshing $workdir"
