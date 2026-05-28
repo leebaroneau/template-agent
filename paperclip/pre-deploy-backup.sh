@@ -101,6 +101,10 @@ ASKPASS
 
   # 2. Hermes profiles  (live on the shared /data volume)
   log "Taring Hermes profiles"
+  _REPO_ACCESS=""
+  _REPOS_WORKTREES=""
+  [[ -f /data/agent-stack/repo-access.yml ]] && _REPO_ACCESS=1
+  [[ -d /data/repos/worktrees ]] && _REPOS_WORKTREES=1
   tar czf "$TMP_DIR/hermes-profiles.tar.gz" \
     --exclude='hermes/profiles/*/profile-backups' \
     --exclude='hermes/profiles/*/python-packages' \
@@ -110,7 +114,10 @@ ASKPASS
     --exclude='hermes/profiles/*/audio_cache' \
     --exclude='*/__pycache__' \
     -C /data \
-    hermes/profiles hermes/SOUL.md hermes/auth.json hermes/.env hermes/cron hermes/hooks 2>/dev/null || true
+    hermes/profiles hermes/SOUL.md hermes/auth.json hermes/.env hermes/cron hermes/hooks \
+    ${_REPO_ACCESS:+agent-stack/repo-access.yml} \
+    ${_REPOS_WORKTREES:+repos/worktrees} \
+    2>/dev/null || true
 
   # 4. Clone (or refresh) the state repo via the deploy key
   log "Refreshing $workdir"
