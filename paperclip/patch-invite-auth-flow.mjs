@@ -75,5 +75,12 @@ export async function patchInviteAuthFlowFile({
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  await patchInviteAuthFlowFile();
+  try {
+    await patchInviteAuthFlowFile();
+  } catch (err) {
+    // Non-fatal: newer Paperclip versions may have fixed the invite auth
+    // flow upstream and no longer have the target asset file.
+    console.warn('[agent-stack] patch-invite-auth-flow skipped:', err.message);
+    process.exit(0);
+  }
 }
