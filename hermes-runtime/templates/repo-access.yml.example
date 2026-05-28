@@ -1,18 +1,16 @@
 # repo-access.yml — Role-group repo access config for hermes-worktree
 #
-# Place this file at /data/agent-stack/repo-access.yml inside the running
-# container. The data volume is already persistent — no external mount needed.
+# Mount this file into the container at the path set by REPO_ACCESS_CONFIG
+# (default: /config/repo-access.yml).
 #
-# One-time bootstrap (after first deploy):
-#   docker cp repo-access.yml <hermes-container>:/data/agent-stack/repo-access.yml
-#   docker exec <hermes-container> reload-repo-access
+# On container start, the hermes-repos startup hook reads this file and:
+#   1. Clones any missing bare repos into /opt/repos/bare/
+#   2. Writes REPOS= into each profile's .env
 #
-# To update (add a repo, grant access):
-#   Edit /data/agent-stack/repo-access.yml inside the container, then run:
-#   reload-repo-access
-#
-# On every container start, hermes-entrypoint runs reload-repo-access automatically
-# if the file is present.
+# Access levels:
+#   rw  → written to REPOS= (hermes-worktree add allowed for this profile+repo)
+#   ro  → not written (profile can read bare clone but cannot create worktrees)
+# Omitted groups → no access for that profile/group pair.
 
 # GitHub source for bare repo cloning.
 # All repos in repo_groups are cloned from: https://github.com/<org>/<repo>
@@ -20,6 +18,7 @@
 github:
   org: my-github-org
   auto_clone: false         # set true to clone all non-archived org repos automatically
+                            # requires GH_TOKEN with read access to the org
 
 # Repo groups — stable collections of related repos.
 # Add a repo here when onboarding it; group membership rarely changes.

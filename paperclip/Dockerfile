@@ -127,8 +127,7 @@ RUN mkdir -p /data /opt/work \
   && chown -R node:node /data /opt/work \
   && chmod +x /opt/hermes-runtime/scripts/*.sh \
   && ln -sf /opt/hermes-runtime/scripts/hermes-worktree.sh /usr/local/bin/hermes-worktree \
-  && mkdir -p /opt/repos/bare /opt/repos/worktrees \
-  && chown -R node:node /opt/repos \
+  && ln -sf /opt/hermes-runtime/scripts/reload-repo-access.sh /usr/local/bin/reload-repo-access \
   && chmod +x /usr/local/bin/bun \
   && chmod +x /opt/paperclip/entrypoint.sh /opt/paperclip/hermes-entrypoint.sh /opt/paperclip/pre-deploy-backup.sh
 

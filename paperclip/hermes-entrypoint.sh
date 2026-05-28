@@ -20,11 +20,11 @@ fi
 
 rm -f /tmp/hermes-entrypoint-ready
 
-mkdir -p "$HERMES_DATA_ROOT" /home/node/.hermes /opt/work /data/.locks
+mkdir -p "$HERMES_DATA_ROOT" /home/node/.hermes /opt/work /data/.locks /data/repos/bare /data/repos/worktrees
 if [[ ! -e /hermes || -L /hermes ]]; then
   ln -sfn /data /hermes
 fi
-chown -R node:node /data /home/node/.hermes /opt/work /opt/repos
+chown -R node:node /data /home/node/.hermes /opt/work
 
 runuser -u node -- flock /data/.locks/bootstrap-profiles.lock /opt/hermes-runtime/scripts/bootstrap-profiles.sh
 
@@ -39,14 +39,11 @@ node /opt/paperclip/patch-hermes-profile-skill-count.mjs
 # If REPO_ACCESS_CONFIG points to a repo-access.yml, clone any missing bare
 # repos and sync REPOS= into all profile .env files. Non-fatal: warnings are
 # logged but Hermes still starts if setup fails.
-REPO_ACCESS_CONFIG="${REPO_ACCESS_CONFIG:-/config/repo-access.yml}"
+REPO_ACCESS_CONFIG="${REPO_ACCESS_CONFIG:-/data/agent-stack/repo-access.yml}"
 if [[ -f "$REPO_ACCESS_CONFIG" ]]; then
-  echo "[hermes-repos] Config found at $REPO_ACCESS_CONFIG — running setup..."
-  /opt/hermes-runtime/scripts/setup-repos-from-yaml.sh --config "$REPO_ACCESS_CONFIG" \
-    || echo "[hermes-repos] WARN: setup-repos-from-yaml.sh failed — check logs above"
-  /opt/hermes-runtime/scripts/sync-repos-local.sh --config "$REPO_ACCESS_CONFIG" \
-    || echo "[hermes-repos] WARN: sync-repos-local.sh failed — check logs above"
-  echo "[hermes-repos] Setup complete."
+  echo "[hermes-repos] Config found at $REPO_ACCESS_CONFIG — running reload-repo-access..."
+  REPO_ACCESS_CONFIG="$REPO_ACCESS_CONFIG" /opt/hermes-runtime/scripts/reload-repo-access.sh \
+    || echo "[hermes-repos] WARN: reload-repo-access failed — check logs above"
 fi
 
 profile_has_gateway_env() {
