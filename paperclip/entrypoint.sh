@@ -73,7 +73,7 @@ if [[ -f /opt/paperclip/important-information-index.md ]]; then
   fi
 fi
 
-chown -R node:node /data /home/node/.hermes /opt/work /opt/repos
+chown -R node:node /data /home/node/.hermes /opt/work
 
 runuser -u node -- flock /data/.locks/bootstrap-profiles.lock /opt/hermes-runtime/scripts/bootstrap-profiles.sh
 
