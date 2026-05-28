@@ -48,6 +48,6 @@ echo "[reload-repo-access] Step 1/2: cloning missing repos..."
 REPO_ACCESS_CONFIG="$CONFIG_FILE" "$SCRIPT_DIR/setup-repos-from-yaml.sh" $DRY_RUN_FLAG
 
 echo "[reload-repo-access] Step 2/2: syncing profile REPOS= entries..."
-REPO_ACCESS_CONFIG="$CONFIG_FILE" "$SCRIPT_DIR/sync-repos-local.sh"
+REPO_ACCESS_CONFIG="$CONFIG_FILE" "$SCRIPT_DIR/sync-repos-local.sh" $DRY_RUN_FLAG
 
 echo "[reload-repo-access] Done."

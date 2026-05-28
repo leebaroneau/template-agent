@@ -13,11 +13,13 @@ set -euo pipefail
 
 CONFIG_FILE="${REPO_ACCESS_CONFIG:-/config/repo-access.yml}"
 DATA_ROOT="${HERMES_DATA_ROOT:-/data/hermes}"
+DRY_RUN=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --config) CONFIG_FILE="$2"; shift ;;
     --data-root) DATA_ROOT="$2"; shift ;;
+    --dry-run) DRY_RUN=true ;;
     -*) echo "Unknown flag: $1" >&2; exit 1 ;;
   esac
   shift
@@ -32,6 +34,7 @@ PYTHON="${HERMES_PYTHON:-/usr/local/lib/hermes-agent/venv/bin/python}"
 
 export _SYNC_CONFIG="$CONFIG_FILE"
 export _DATA_ROOT="$DATA_ROOT"
+export _DRY_RUN="$DRY_RUN"
 
 "$PYTHON" << 'PYEOF'
 import yaml, os
@@ -75,8 +78,11 @@ for profile_name, entries in (profiles or {}).items():
     if not found:
         new_lines.append(repos_line + '\n')
 
-    with open(env_file, 'w') as f:
-        f.writelines(new_lines)
-
-    print(f"[sync-repos] ok: {profile_name} → {len(rw)} rw repos")
+    dry_run = os.environ.get('_DRY_RUN', 'false').lower() == 'true'
+    if not dry_run:
+        with open(env_file, 'w') as f:
+            f.writelines(new_lines)
+        print(f"[sync-repos] ok: {profile_name} → {len(rw)} rw repos")
+    else:
+        print(f"[sync-repos] (dry-run) would update {profile_name} → {len(rw)} rw repos to: {repos_line}")
 PYEOF
