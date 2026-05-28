@@ -19,6 +19,7 @@ Delegate coding work to the `claude` CLI subprocess. Claude Code is best for: mu
 ```bash
 # Generate profile-scoped MCP config (holographic memory + active mcp_servers from config.yaml)
 _MCP_CFG=$(hermes-gen-mcp-config)
+trap 'rm -f "$_MCP_CFG"' EXIT
 
 claude -p "<task description>" \
   --plugin-dir /opt/plugins/superpowers \
@@ -27,8 +28,6 @@ claude -p "<task description>" \
   --max-turns 20 \
   --output-format json \
   2>&1
-
-rm -f "$_MCP_CFG"
 ```
 
 Run from the repo root. Capture stdout. Parse the JSON result for the `result` field and any file diffs.

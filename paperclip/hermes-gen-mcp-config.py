@@ -50,7 +50,7 @@ if _HAVE_YAML:
 # Always inject holographic memory pointing at this profile's DB.
 # HERMES_HOME is profile-aware and already set in the container environment.
 servers["holographic-memory"] = {
-    "command": "paperclip-holographic-memory-mcp",
+    "command": "/usr/local/bin/hermes-holo-mcp-wrapper",
     "env": {
         "PAPERCLIP_HOLO_MEMORY_DB": os.path.join(hermes_home, "memory_store.db"),
         "PAPERCLIP_HOLO_MEMORY_RECALL_ENABLED": "true",
