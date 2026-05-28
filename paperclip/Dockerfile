@@ -36,6 +36,8 @@ RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked \
     curl -fsSL https://bun.sh/install | bash \
   && ln -sf /root/.bun/bin/bun /usr/local/bin/bun
 
+COPY paperclip/patch-hermes-codex-none-output.py /opt/paperclip/patch-hermes-codex-none-output.py
+
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     --mount=type=cache,target=/root/.npm,sharing=locked \
     curl -fsSL "https://raw.githubusercontent.com/NousResearch/hermes-agent/${HERMES_AGENT_REF}/scripts/install.sh" \
@@ -44,6 +46,8 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
   && cd "$HERMES_SRC" \
   && git fetch --depth 1 origin "${HERMES_AGENT_REF}" \
   && git checkout FETCH_HEAD \
+  && python3 /opt/paperclip/patch-hermes-codex-none-output.py "$HERMES_SRC/run_agent.py" \
+  && python3 -m py_compile "$HERMES_SRC/run_agent.py" \
   && (uv pip install --python ./venv/bin/python -e ".[all,messaging]" \
         || uv pip install --python ./venv/bin/python -e ".[all]" \
         || uv pip install --python ./venv/bin/python -e .) \
