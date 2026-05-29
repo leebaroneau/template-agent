@@ -24,6 +24,30 @@ mkdir -p "$HERMES_DATA_ROOT" /home/node/.hermes /opt/work /data/.locks /data/rep
 if [[ ! -e /hermes || -L /hermes ]]; then
   ln -sfn /data /hermes
 fi
+
+# Persist CLI auth (gh, claude-code, codex) across redeployments by storing
+# their config dirs on the /data volume and symlinking from both user homes.
+# On a fresh volume these dirs are empty and CLIs prompt for auth once; after
+# that, auth survives every future redeploy without manual re-authentication.
+_cli_auth_root="/data/cli-auth"
+mkdir -p \
+  "${_cli_auth_root}/.config/gh" \
+  "${_cli_auth_root}/.claude" \
+  "${_cli_auth_root}/.codex"
+for _user_home in /home/node /root; do
+  mkdir -p "${_user_home}/.config"
+  for _dir in .claude .codex .config/gh; do
+    _target="${_cli_auth_root}/${_dir}"
+    _link="${_user_home}/${_dir}"
+    if [[ -d "$_link" && ! -L "$_link" ]]; then
+      cp -an "${_link}/." "${_target}/" 2>/dev/null || true
+      rm -rf "$_link"
+    fi
+    ln -sfn "$_target" "$_link"
+  done
+done
+unset _cli_auth_root _user_home _dir _target _link
+
 chown -R node:node /data /home/node/.hermes /opt/work
 
 runuser -u node -- flock /data/.locks/bootstrap-profiles.lock /opt/hermes-runtime/scripts/bootstrap-profiles.sh
