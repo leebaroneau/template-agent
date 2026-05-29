@@ -67,3 +67,10 @@ security:
       - '169\.254\.169\.254'
       - 'cat\s+~?/?\.?ssh/'
       - 'aws\s+s3\s+sync\s+.+\s+s3://'
+      # Require approval before merging PRs or pushing directly to main.
+      # GitHub branch protection covers public repos; these catch the gap for
+      # private repos where branch protection requires a paid plan.
+      - 'gh\s+pr\s+merge'
+      - 'git\s+push\s+.*\s+main'
+      - 'git\s+push\s+origin\s+main'
+      - 'git\s+checkout\s+main'
