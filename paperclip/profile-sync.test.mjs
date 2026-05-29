@@ -77,7 +77,6 @@ test('buildManagedAgentPayload adopts Paperclip runtime identity Hermes home', (
     payload.adapterConfig.env.HERMES_HOME,
     '/data/instances/default/runtimes/hermes/profiles/paperclip-runtime-researcher',
   );
-  assert.equal(payload.adapterConfig.env.GBRAIN_HOME, '/data/gbrain/paperclip-runtime-researcher');
   assert.equal(payload.adapterConfig.env.KEEP_ME, '1');
   assert.equal(payload.metadata.agentStackProfileSlug, 'paperclip-runtime-researcher');
   assert.equal(
@@ -565,9 +564,7 @@ test('ensureProfileHomes rejects explicit Hermes homes outside managed roots', a
         profileSlug: 'acme-researcher',
         hermesHome: '/etc',
         hermesDataRoot: join(root, 'hermes'),
-        gbrainDataRoot: join(root, 'gbrain'),
         templateDir: join(process.cwd(), 'hermes-runtime/templates'),
-        initGbrain: false,
       }),
       /hermesHome must be within/,
     );
@@ -584,9 +581,7 @@ test('ensureProfileHomes rejects explicit Hermes homes at a managed root boundar
         profileSlug: 'acme-researcher',
         hermesHome: join(root, 'hermes', 'profiles'),
         hermesDataRoot: join(root, 'hermes'),
-        gbrainDataRoot: join(root, 'gbrain'),
         templateDir: join(process.cwd(), 'hermes-runtime/templates'),
-        initGbrain: false,
       }),
       /hermesHome must be within/,
     );
@@ -733,7 +728,6 @@ test('reconcileAgents provisions Paperclip runtime identity Hermes homes when pr
         homeCalls.push(input);
         return {
           hermesHome: input.hermesHome,
-          gbrainHome: join(root, 'gbrain', input.profileSlug),
           modelConfig: {},
         };
       },
@@ -761,7 +755,6 @@ test('reconcileAgents provisions Paperclip runtime identity Hermes homes when pr
       patchCalls[0].payload.adapterConfig.env.HERMES_HOME,
       '/data/instances/default/runtimes/hermes/profiles/paperclip-runtime-researcher',
     );
-    assert.equal(patchCalls[0].payload.adapterConfig.env.GBRAIN_HOME, '/data/gbrain/paperclip-runtime-researcher');
     assert.equal(result.manifest.managedAgents[0].profileSlug, 'paperclip-runtime-researcher');
     assert.equal(
       result.manifest.managedAgents[0].hermesHome,

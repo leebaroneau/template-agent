@@ -160,7 +160,6 @@ export function buildManagedAgentPayload({
 
   const paperclipServerUrl = withoutApiSuffix(paperclipAgentServerUrl);
   const hermesHome = runtimeIdentityHermesHome(metadata, hermesDataRoot) || join(hermesDataRoot, 'profiles', profileSlug);
-  const gbrainHome = join(gbrainDataRoot, profileSlug);
   const existingConfig = agent.adapterConfig && typeof agent.adapterConfig === 'object'
     ? agent.adapterConfig
     : {};
@@ -414,7 +413,6 @@ export async function ensureProfileHomes({
   hermesDataRoot = '/data/hermes',
   templateDir = DEFAULT_TEMPLATE_DIR,
   configSourcePath,
-  initGbrain = true,
   hermesHome: explicitHermesHome,
 }) {
   assertSafeSlug(profileSlug);
@@ -424,7 +422,6 @@ export async function ensureProfileHomes({
     : (profileSlug === 'default'
       ? hermesDataRoot
       : join(hermesDataRoot, 'profiles', profileSlug));
-  const gbrainHome = join(gbrainDataRoot, profileSlug);
 
   await mkdir(hermesHome, { recursive: true });
   await ensureHermesSubdirs(hermesHome);
