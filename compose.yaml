@@ -17,10 +17,15 @@ services:
       PAPERCLIP_PUBLIC_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
       PAPERCLIP_AUTH_PUBLIC_BASE_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
       # Internal Docker service name + localhost are always allowed. The public
-      # hostname is appended automatically via PAPERCLIP_HOSTNAME (already
-      # required for Traefik routing). This approach avoids an operator override
+      # hostname is appended via COOLIFY_FQDN, which Coolify injects as a
+      # build-time substitution var (so it reaches the compose .env). A normal
+      # app env var like PAPERCLIP_HOSTNAME is NOT build-time, so Coolify omits
+      # it from the render .env and the ${VAR:-default} fallback would silently
+      # resolve to the example default — leaving the real host unallowlisted.
+      # Local dev (no Coolify) falls back to the example default, matching
+      # .env.example. This approach also avoids an operator override
       # accidentally stripping the internal names from the list.
-      PAPERCLIP_ALLOWED_HOSTNAMES: "paperclip,localhost,127.0.0.1,${PAPERCLIP_HOSTNAME:-paperclip.example.com}"
+      PAPERCLIP_ALLOWED_HOSTNAMES: "paperclip,localhost,127.0.0.1,${COOLIFY_FQDN:-paperclip.example.com}"
       BETTER_AUTH_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
       BETTER_AUTH_BASE_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
       PORT: "3100"
