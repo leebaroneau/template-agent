@@ -90,18 +90,41 @@ ASKPASS
     chmod 700 "$git_askpass"
     git_auth_env=(env GIT_TERMINAL_PROMPT=0 "GIT_ASKPASS=$git_askpass" "AGENT_STATE_TOKEN=$AGENT_STATE_TOKEN")
   else
-    log "ERROR: no deploy key at $key_file and AGENT_STATE_TOKEN is unset. Skipping backup so this missing-auth state does not block deployment, but the operator should investigate."
-    exit 0
+    log "ERROR: AGENT_STATE_REPO is set ($AGENT_STATE_REPO) but there is no deploy key at $key_file and AGENT_STATE_TOKEN is unset. This brand is configured to back up, so refusing to deploy without a recovery point (fail-closed). Restore the deploy key or AGENT_STATE_TOKEN, then re-deploy."
+    exit 1
   fi
 
   log "Brand: $brand  Repo: $AGENT_STATE_REPO  Date: $date"
 
-  # 1. Paperclip DB dump
+  # 1. Paperclip DB dump — retry against embedded-postgres warmup.
+  # pre_deployment_command runs INSIDE a container; a freshly-restarted one
+  # (e.g. back-to-back deploys) may not have its embedded postgres ready yet,
+  # so a single attempt can fail spuriously. Retry with backoff. We stay
+  # fail-closed: if no dump is produced after all attempts, abort the deploy
+  # rather than let Coolify swap the container without a recovery point.
   log "Dumping Paperclip DB"
-  paperclipai db:backup --dir "$TMP_DIR" >/dev/null 2>&1
-  local db_file
-  db_file="$(ls -1t "$TMP_DIR"/paperclip-*.sql.gz | head -1)"
-  [[ -f "$db_file" ]] || { log "ERROR: paperclipai db:backup produced no .sql.gz; aborting"; exit 1; }
+  local db_file="" attempt=0
+  local max_attempts="${AGENT_STATE_BACKUP_RETRIES:-6}"
+  local retry_delay="${AGENT_STATE_BACKUP_RETRY_DELAY:-10}"
+  while (( attempt < max_attempts )); do
+    attempt=$(( attempt + 1 ))
+    if paperclipai db:backup --dir "$TMP_DIR" >/dev/null 2>"$TMP_DIR/db-backup.err"; then
+      db_file="$(ls -1t "$TMP_DIR"/paperclip-*.sql.gz 2>/dev/null | head -1)"
+      [[ -f "$db_file" ]] && break
+      db_file=""
+    fi
+    if (( attempt < max_attempts )); then
+      log "  db:backup attempt $attempt/$max_attempts produced no dump (postgres warming up?); retrying in ${retry_delay}s"
+      sleep "$retry_delay"
+    fi
+  done
+  if [[ -z "$db_file" || ! -f "$db_file" ]]; then
+    log "ERROR: paperclipai db:backup produced no .sql.gz after $max_attempts attempt(s); aborting deploy to protect data (fail-closed)."
+    if [[ -s "$TMP_DIR/db-backup.err" ]]; then
+      log "  last db:backup stderr: $(tail -n 3 "$TMP_DIR/db-backup.err" | tr '\n' ' ')"
+    fi
+    exit 1
+  fi
 
   # 2. Hermes profiles  (live on the shared /data volume)
   log "Taring Hermes profiles"
