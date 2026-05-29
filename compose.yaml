@@ -16,16 +16,18 @@ services:
       PAPERCLIP_DEPLOYMENT_EXPOSURE: private
       PAPERCLIP_PUBLIC_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
       PAPERCLIP_AUTH_PUBLIC_BASE_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
-      # Internal Docker service name + localhost are always allowed. The public
-      # hostname is appended via COOLIFY_FQDN, which Coolify injects as a
-      # build-time substitution var (so it reaches the compose .env). A normal
-      # app env var like PAPERCLIP_HOSTNAME is NOT build-time, so Coolify omits
-      # it from the render .env and the ${VAR:-default} fallback would silently
-      # resolve to the example default — leaving the real host unallowlisted.
-      # Local dev (no Coolify) falls back to the example default, matching
-      # .env.example. This approach also avoids an operator override
-      # accidentally stripping the internal names from the list.
-      PAPERCLIP_ALLOWED_HOSTNAMES: "paperclip,localhost,127.0.0.1,${COOLIFY_FQDN:-paperclip.example.com}"
+      # NOTE: PAPERCLIP_ALLOWED_HOSTNAMES is intentionally NOT set here.
+      # Coolify injects app env vars into the container at runtime, but an
+      # explicit `environment:` value with a non-empty substitution default
+      # OVERRIDES that injection. Neither ${PAPERCLIP_HOSTNAME} nor
+      # ${COOLIFY_FQDN} is available for compose-parse substitution (Coolify
+      # only injects COOLIFY_* / app vars at container runtime, not into the
+      # render .env), so any hardcoded value here resolves to its literal
+      # default and silently leaves the real public host un-allowlisted.
+      # Set PAPERCLIP_ALLOWED_HOSTNAMES as a normal Coolify app env var
+      # (e.g. "paperclip.haverford.au,paperclip,localhost,127.0.0.1"); it then
+      # reaches the container via runtime injection. Local dev sets it in .env
+      # (see .env.example) or relies on Paperclip's built-in localhost default.
       BETTER_AUTH_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
       BETTER_AUTH_BASE_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
       PORT: "3100"
