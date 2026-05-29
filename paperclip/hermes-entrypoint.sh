@@ -63,11 +63,22 @@ node /opt/paperclip/patch-hermes-profile-skill-count.mjs
 # If REPO_ACCESS_CONFIG points to a repo-access.yml, clone any missing bare
 # repos and sync REPOS= into all profile .env files. Non-fatal: warnings are
 # logged but Hermes still starts if setup fails.
+#
+# GH_TOKEN is derived from the persisted gh auth (symlinked to /data/cli-auth)
+# so no Coolify env var is needed — the token is used only for cloning and is
+# never written to any profile .env.
 REPO_ACCESS_CONFIG="${REPO_ACCESS_CONFIG:-/data/agent-stack/repo-access.yml}"
 if [[ -f "$REPO_ACCESS_CONFIG" ]]; then
+  if [[ -z "${GH_TOKEN:-}" ]] && command -v gh >/dev/null 2>&1; then
+    GH_TOKEN="$(gh auth token 2>/dev/null)" || true
+    export GH_TOKEN
+  fi
   echo "[hermes-repos] Config found at $REPO_ACCESS_CONFIG — running reload-repo-access..."
   REPO_ACCESS_CONFIG="$REPO_ACCESS_CONFIG" /opt/hermes-runtime/scripts/reload-repo-access.sh \
     || echo "[hermes-repos] WARN: reload-repo-access failed — check logs above"
+  # Bare repos are cloned as root inside the entrypoint; fix ownership so node
+  # profiles can use hermes-worktree without git safe.directory errors.
+  chown -R node:node /data/repos 2>/dev/null || true
 fi
 
 profile_has_gateway_env() {

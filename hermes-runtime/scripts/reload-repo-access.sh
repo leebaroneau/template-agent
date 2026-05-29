@@ -34,6 +34,14 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
   exit 1
 fi
 
+# Derive GH_TOKEN from persisted gh auth if not already set. This means no
+# Coolify env var is needed — auth lives in /data/cli-auth/.config/gh (symlinked
+# by the entrypoint) and is used only for cloning, never written to profile envs.
+if [[ -z "${GH_TOKEN:-}" ]] && command -v gh >/dev/null 2>&1; then
+  GH_TOKEN="$(gh auth token 2>/dev/null)" || true
+  export GH_TOKEN
+fi
+
 PYTHON="${HERMES_PYTHON:-/usr/local/lib/hermes-agent/venv/bin/python}"
 [[ -x "$PYTHON" ]] || PYTHON="python3"
 
@@ -49,5 +57,12 @@ REPO_ACCESS_CONFIG="$CONFIG_FILE" "$SCRIPT_DIR/setup-repos-from-yaml.sh" $DRY_RU
 
 echo "[reload-repo-access] Step 2/2: syncing profile REPOS= entries..."
 REPO_ACCESS_CONFIG="$CONFIG_FILE" "$SCRIPT_DIR/sync-repos-local.sh" $DRY_RUN_FLAG
+
+# Fix ownership so node profiles can use hermes-worktree without safe.directory
+# errors regardless of which user ran this script.
+REPOS_ROOT="${HERMES_REPOS_ROOT:-/data/repos}"
+if [[ -d "$REPOS_ROOT" ]]; then
+  chown -R node:node "$REPOS_ROOT" 2>/dev/null || true
+fi
 
 echo "[reload-repo-access] Done."
