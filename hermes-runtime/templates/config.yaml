@@ -16,6 +16,7 @@ mcp_servers:
     enabled: true
     timeout: 60
     connect_timeout: 30
+    allow_sampling: false
     tools:
       resources: false
       prompts: false
@@ -48,10 +49,32 @@ compression:
   protect_last_n: 20
   hygiene_hard_message_limit: 400
 
+# ── Cost optimisation ─────────────────────────────────────────────────────────
+# Route compression to a cheaper/faster model to cut costs. Compression fires
+# on every long session — routing it off the primary saves ~90% on compression
+# costs. Set to your cheapest fast model and uncomment.
+# auxiliary:
+#   compression:
+#     provider: anthropic          # or openrouter / openai / google
+#     model: claude-haiku-4-5-20251001  # cheapest Claude; swap as needed
+#   summarization:
+#     provider: anthropic
+#     model: claude-haiku-4-5-20251001
+
 # Prompt caching reduces cost on repeated context (system prompt, skill blocks).
 # Hermes attaches cache_control breakpoints automatically when this is enabled.
 prompt_caching:
   enabled: true
+
+# ── No-agent cron watchdogs ───────────────────────────────────────────────────
+# Run deterministic shell checks on a schedule with zero LLM tokens.
+# Uncomment and adjust thresholds to enable disk-space alerting.
+# cron:
+#   - name: disk-watchdog
+#     schedule: "*/15 * * * *"
+#     mode: no_agent
+#     command: "df -h /data | awk 'NR==2 && $5+0 > 85 {print \"Disk usage high: \"$5}'"
+#     notify: telegram_private
 
 # Security defaults. redact_secrets strips API key patterns from memory writes
 # and tool output before they reach the LLM or are stored in MEMORY.md.
@@ -59,6 +82,9 @@ prompt_caching:
 security:
   allow_private_urls: false
   redact_secrets: true
+  secrets:
+    redact_in_memory_writes: true
+    redact_in_traces: true
   tirith_enabled: true
   approval:
     denylist:
