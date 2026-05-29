@@ -64,13 +64,13 @@ jobs:
             "${{ vars.COOLIFY_ALX_BASE_URL }}/api/v1/deploy?uuid=${{ vars.COOLIFY_ALX_APP_UUID }}&force=${{ inputs.force || 'false' }}" \
             || echo "ALX deploy trigger failed (non-fatal)"
 
-      - name: Trigger leebarone Coolify deploy
-        if: success() && github.ref == 'refs/heads/main' && vars.COOLIFY_LEEBARONE_BASE_URL != '' && vars.COOLIFY_LEEBARONE_APP_UUID != ''
+      - name: Trigger Haverford Coolify deploy
+        if: success() && github.ref == 'refs/heads/main' && vars.COOLIFY_HAVERFORD_BASE_URL != '' && vars.COOLIFY_HAVERFORD_APP_UUID != ''
         run: |
           curl -sf -X GET \
-            -H "Authorization: Bearer ${{ secrets.COOLIFY_LEEBARONE_TOKEN }}" \
-            "${{ vars.COOLIFY_LEEBARONE_BASE_URL }}/api/v1/deploy?uuid=${{ vars.COOLIFY_LEEBARONE_APP_UUID }}&force=${{ inputs.force || 'false' }}" \
-            || echo "leebarone deploy trigger failed (non-fatal)"
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_HAVERFORD_TOKEN }}" \
+            "${{ vars.COOLIFY_HAVERFORD_BASE_URL }}/api/v1/deploy?uuid=${{ vars.COOLIFY_HAVERFORD_APP_UUID }}&force=${{ inputs.force || 'false' }}" \
+            || echo "Haverford deploy trigger failed (non-fatal)"
 
       - name: Trigger Genvest Coolify deploy
         if: success() && github.ref == 'refs/heads/main' && vars.COOLIFY_GENVEST_BASE_URL != '' && vars.COOLIFY_GENVEST_APP_UUID != ''
