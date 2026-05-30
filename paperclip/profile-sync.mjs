@@ -35,7 +35,6 @@ const DEFAULT_COMPANY_SKILL_SLUGS = Object.freeze([
   'use-100m-framework',
   'using-paperclip',
   'paperclip-org-structure',
-  'git-worktree',
   'pipeline-workflow',
   'claude-code',
   'codex',

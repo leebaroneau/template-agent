@@ -73,6 +73,35 @@ test('Hermes image installs the Anthropic provider dependency', async () => {
   assert.match(dockerfile, /uv pip install --python \.\/venv\/bin\/python[^\n]*"anthropic>=0\.39\.0"/);
 });
 
+test('template does not ship the removed Hermes worktree repo-access system', async () => {
+  const forbidden = [
+    'hermes-worktree',
+    'git-worktree',
+    'repo-access.yml',
+    'repo-access',
+    'reload-repo-access',
+    'setup-repos-from-yaml',
+    'sync-repos-local',
+    'HERMES_REPOS',
+    'HERMES_REPOS_ROOT',
+    '/opt/repos',
+    '/data/repos',
+  ];
+  const files = (await gitLsFiles()).filter((file) => file !== 'scripts/template-identity.test.mjs');
+  const failures = [];
+
+  for (const file of files) {
+    const text = await readFile(join(repoRoot, file), 'utf8');
+    for (const pattern of forbidden) {
+      if (file.includes(pattern) || text.includes(pattern)) {
+        failures.push(`${file}: contains ${pattern}`);
+      }
+    }
+  }
+
+  assert.deepEqual(failures, []);
+});
+
 test('Hermes entrypoint marks the wrapper healthcheck ready', async () => {
   const entrypoint = await readFile(join(repoRoot, 'paperclip/hermes-entrypoint.sh'), 'utf8');
 

@@ -70,8 +70,6 @@ services:
       HERMES_DASHBOARD_SKIP_BUILD: ${HERMES_DASHBOARD_SKIP_BUILD:-1}
       HERMES_GATEWAY_AUTOSTART: ${HERMES_GATEWAY_AUTOSTART:-1}
       HERMES_GATEWAY_PROFILES: ${HERMES_GATEWAY_PROFILES:-auto}
-      HERMES_REPOS_ROOT: /data/repos
-      HERMES_REPOS: ${HERMES_REPOS:-}
       # Redirect XDG config + data dirs into the persistent volume so all CLI OAuth
       # tokens (gh, shopify, etc.) survive container redeploys. Non-XDG tools get
       # explicit vars below. GH_CONFIG_DIR is redundant when XDG_CONFIG_HOME is set
@@ -82,10 +80,6 @@ services:
       DOCKER_CONFIG: /data/hermes/.docker
       AWS_CONFIG_FILE: /data/hermes/.aws/config
       AWS_SHARED_CREDENTIALS_FILE: /data/hermes/.aws/credentials
-      # Repo access: set GH_TOKEN for private repos. Place repo-access.yml at
-      # /data/agent-stack/repo-access.yml (persists in the data volume — no external mount needed).
-      GH_TOKEN: ${GH_TOKEN:-}
-      REPO_ACCESS_CONFIG: ${REPO_ACCESS_CONFIG:-/data/agent-stack/repo-access.yml}
       PAPERCLIP_API_KEY: ${PAPERCLIP_API_KEY:-}
       # Default to Docker Compose internal service DNS. Operators running in a
       # different topology (e.g. Paperclip on a separate host) can override via env.

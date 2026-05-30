@@ -145,10 +145,7 @@ stage_snapshot_file "$TMP_DIR/paperclip-db.sql.gz" "$SNAPSHOT_DIR" "paperclip-db
 
 # ── 2. Hermes profiles ──────────────────────────────────────────────────
 log "Taring Hermes profiles via $HERMES_CONTAINER"
-docker exec "$HERMES_CONTAINER" bash -lc 'cd /data && tar czf /tmp/hermes-profiles.tar.gz --exclude="hermes/profiles/*/profile-backups" --exclude="hermes/profiles/*/python-packages" --exclude="hermes/profiles/*/bin" --exclude="hermes/profiles/*/lsp" --exclude="hermes/profiles/*/cache" --exclude="hermes/profiles/*/audio_cache" --exclude="*/__pycache__" hermes/profiles hermes/SOUL.md hermes/auth.json hermes/.env hermes/cron hermes/hooks \
-  $(test -f agent-stack/repo-access.yml && echo agent-stack/repo-access.yml || true) \
-  $(test -d repos/worktrees && echo repos/worktrees || true) \
-  2>/dev/null'
+docker exec "$HERMES_CONTAINER" bash -lc 'cd /data && tar czf /tmp/hermes-profiles.tar.gz --exclude="hermes/profiles/*/profile-backups" --exclude="hermes/profiles/*/python-packages" --exclude="hermes/profiles/*/bin" --exclude="hermes/profiles/*/lsp" --exclude="hermes/profiles/*/cache" --exclude="hermes/profiles/*/audio_cache" --exclude="*/__pycache__" hermes/profiles hermes/SOUL.md hermes/auth.json hermes/.env hermes/cron hermes/hooks 2>/dev/null'
 docker cp "$HERMES_CONTAINER:/tmp/hermes-profiles.tar.gz" "$TMP_DIR/hermes-profiles.tar.gz"
 stage_snapshot_file "$TMP_DIR/hermes-profiles.tar.gz" "$SNAPSHOT_DIR" "hermes-profiles.tar.gz"
 

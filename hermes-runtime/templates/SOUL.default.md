@@ -24,30 +24,5 @@ Default Hermes chats run on Claude Haiku for cost and latency control. Use Haiku
 
 Before work: `/data/agent-stack/learning-protocol.md`. Before issue actions: `/data/agent-stack/delegation-protocol.md`.
 
-## Repo Work — Worktrees Required
-
-Before reading or modifying code in any repo:
-
-```bash
-WORKTREE=$(hermes-worktree add $PROFILE_NAME <repo> <branch>)
-cd "$WORKTREE"
-# work normally — git add / commit / push / gh pr create
-hermes-worktree remove $PROFILE_NAME <repo>   # after PR merges
-```
-
-Rules:
-- Never work directly in a bare clone or run `git clone` manually
-- Branch naming: pipeline-core repos use `<type>/<#>-<slug>` (load `pipeline-workflow` skill for governed repos)
-- If access denied (`REPOS=` not set for this repo): run `reload-repo-access` first, then retry
-- Check active worktrees before starting: `hermes-worktree list`
-
-To grant repo access or add a new repo:
-```bash
-# Edit /data/agent-stack/repo-access.yml, then:
-reload-repo-access
-```
-If no config exists yet, read `/opt/hermes-runtime/templates/repo-access.yml.example` to bootstrap.
-
-
 ## On first session
 If `ONBOARDING.md` exists, complete it first, then delete it.
