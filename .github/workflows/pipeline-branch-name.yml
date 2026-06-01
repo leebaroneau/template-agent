@@ -5,6 +5,10 @@ on:
   pull_request:
     types: [opened, synchronize, edited]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   branch-name:
     uses: leebaroneau/pipeline-core/.github/workflows/branch-name.yml@v1
@@ -13,5 +17,4 @@ jobs:
       statuses: write
       pull-requests: write
     with:
-      runner: '["ubuntu-latest"]'
       config-path: .github/pipeline-config.yml

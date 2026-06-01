@@ -5,6 +5,10 @@ on:
   pull_request:
     types: [opened, synchronize]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   pr-labels:
     uses: leebaroneau/pipeline-core/.github/workflows/pr-labels.yml@v1
@@ -12,5 +16,4 @@ jobs:
       contents: read
       pull-requests: write
     with:
-      runner: '["ubuntu-latest"]'
       labeler-config: .github/labeler.yml

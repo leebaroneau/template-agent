@@ -5,6 +5,10 @@ on:
   pull_request:
     types: [opened, edited, synchronize]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   issue-link:
     uses: leebaroneau/pipeline-core/.github/workflows/issue-link.yml@v1
@@ -14,5 +18,4 @@ jobs:
       pull-requests: write
       issues: read
     with:
-      runner: '["ubuntu-latest"]'
       config-path: .github/pipeline-config.yml

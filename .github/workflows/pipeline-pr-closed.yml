@@ -5,6 +5,10 @@ on:
   pull_request:
     types: [closed]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
 jobs:
   pr-closed:
     uses: leebaroneau/pipeline-core/.github/workflows/pr-closed.yml@v1
@@ -13,5 +17,4 @@ jobs:
       issues: write
       pull-requests: read
     with:
-      runner: '["ubuntu-latest"]'
       config-path: .github/pipeline-config.yml
