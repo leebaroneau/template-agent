@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$repo_root"
+
+if [[ ! -x scripts/doctor ]]; then
+  chmod +x scripts/doctor
+fi
+
+./scripts/doctor
