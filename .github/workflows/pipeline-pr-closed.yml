@@ -1,20 +1,81 @@
 # .github/workflows/pipeline-pr-closed.yml
-name: Pipeline — pr-closed
+# Self-contained board sync — moves the linked issue to "Done" on the org's
+# Roadmap project when a PR is merged. Skips if PR was closed without merging.
+# No pipeline-core dependency; uses FLEET_PAT for GitHub Projects v2 GraphQL.
+name: Board — pr-closed
 
 on:
   pull_request:
     types: [closed]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  group: board-pr-closed-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
   pr-closed:
-    uses: leebaroneau/pipeline-core/.github/workflows/pr-closed.yml@v1
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
     permissions:
-      contents: read
-      issues: write
       pull-requests: read
-    with:
-      config-path: .github/pipeline-config.yml
+    steps:
+      - name: Move linked issue to Done
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.FLEET_PAT }}
+          script: |
+            const body = context.payload.pull_request.body ?? '';
+            const m = body.match(/(?:fixes|closes|resolves)\s+#(\d+)/i);
+            if (!m) return core.info('No linked issue in PR body — skipping');
+            const issueNum = +m[1];
+            const org = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const { organization } = await github.graphql(`
+              query($org: String!) {
+                organization(login: $org) {
+                  projectsV2(first: 20) {
+                    nodes {
+                      id title
+                      field(name: "Status") {
+                        ... on ProjectV2SingleSelectField {
+                          id options { id name }
+                        }
+                      }
+                    }
+                  }
+                }
+              }`, { org });
+
+            const proj = organization.projectsV2.nodes.find(p => p.title === 'Roadmap');
+            if (!proj) return core.info('No Roadmap project found');
+            const statusField = proj.field;
+            if (!statusField) return core.info('No Status field on Roadmap');
+            const opt = statusField.options.find(o => /^done$/i.test(o.name));
+            if (!opt) return core.info('No Done option on Status field');
+
+            const { repository } = await github.graphql(`
+              query($org: String!, $repo: String!, $n: Int!) {
+                repository(owner: $org, name: $repo) {
+                  issue(number: $n) {
+                    id
+                    projectItems(first: 10) { nodes { id project { id } } }
+                  }
+                }
+              }`, { org, repo, n: issueNum });
+
+            const issue = repository?.issue;
+            if (!issue) return core.info(`Issue #${issueNum} not found`);
+
+            let itemId = issue.projectItems.nodes.find(i => i.project.id === proj.id)?.id;
+            if (!itemId) return core.info(`Issue #${issueNum} not on Roadmap board — skipping`);
+
+            await github.graphql(`
+              mutation($pid: ID!, $iid: ID!, $fid: ID!, $oid: String!) {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: $pid, itemId: $iid, fieldId: $fid,
+                  value: { singleSelectOptionId: $oid }
+                }) { projectV2Item { id } }
+              }`, { pid: proj.id, iid: itemId, fid: statusField.id, oid: opt.id });
+
+            core.info(`Issue #${issueNum} → Done`);
