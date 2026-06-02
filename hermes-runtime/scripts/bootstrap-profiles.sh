@@ -274,6 +274,20 @@ if tmpl_pc and isinstance(tmpl_pc, dict):
         profile["prompt_caching"] = tmpl_pc
         changed = True
 
+# smart_model_routing — deep merge missing keys. Profiles created before routing
+# was added (or seeded without it) keep the base model for everything, including
+# skill execution. Deep-merge so a profile entirely missing the block gets it,
+# and a profile with a partial block (e.g. enabled but no skill_model) is filled.
+# Existing values are never overwritten — a brand override of skill_model survives.
+tmpl_smr = template.get("smart_model_routing")
+if tmpl_smr and isinstance(tmpl_smr, dict):
+    profile_smr = profile.setdefault("smart_model_routing", {})
+    if not isinstance(profile_smr, dict):
+        profile_smr = {}
+        profile["smart_model_routing"] = profile_smr
+    if deep_merge_missing(profile_smr, tmpl_smr):
+        changed = True
+
 # security — deep merge scalar keys; denylist is additive (union)
 tmpl_sec = template.get("security")
 if tmpl_sec and isinstance(tmpl_sec, dict):
