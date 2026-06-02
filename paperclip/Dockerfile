@@ -58,6 +58,7 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
         || uv pip install --python ./venv/bin/python -e ".[all]" \
         || uv pip install --python ./venv/bin/python -e .) \
   && uv pip install --python ./venv/bin/python "anthropic>=0.39.0" faster-whisper \
+       marker-pdf pymupdf pytesseract python-docx openpyxl pandas tabulate python-magic \
   && cd "$HERMES_SRC/web" \
   && npm install \
   && npm run build \
