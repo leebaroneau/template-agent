@@ -13,6 +13,8 @@ ENV PAPERCLIP_UI_DEV_MIDDLEWARE=false
 ENV PAPERCLIP_SOURCE_DIR=/opt/paperclip-src
 ENV HERMES_DATA_ROOT=/data/hermes
 ENV HERMES_HOME=/data/hermes
+ENV HF_HOME=/data/hermes/model-cache
+ENV TORCH_HOME=/data/hermes/model-cache
 ENV HERMES_TUI_DIR=/usr/local/lib/hermes-agent/ui-tui
 ENV PATH="/usr/local/bin:/root/.local/bin:/root/.bun/bin:${PATH}"
 
@@ -34,7 +36,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     python3-venv \
     ripgrep \
     tini \
-    unzip
+    unzip \
+    libmagic1 \
+    poppler-utils \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    tesseract-ocr-osd
 
 RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked \
     curl -fsSL https://bun.sh/install | bash \
@@ -53,6 +60,7 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
         || uv pip install --python ./venv/bin/python -e ".[all]" \
         || uv pip install --python ./venv/bin/python -e .) \
   && uv pip install --python ./venv/bin/python "anthropic>=0.39.0" faster-whisper \
+       marker-pdf pymupdf pytesseract python-docx openpyxl pandas tabulate python-magic \
   && cd "$HERMES_SRC/web" \
   && npm install \
   && npm run build \
