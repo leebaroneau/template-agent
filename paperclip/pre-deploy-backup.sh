@@ -129,12 +129,14 @@ ASKPASS
   # 2. Hermes profiles  (live on the shared /data volume)
   log "Taring Hermes profiles"
   tar czf "$TMP_DIR/hermes-profiles.tar.gz" \
+    --exclude='hermes/profiles/*/repos' \
     --exclude='hermes/profiles/*/profile-backups' \
     --exclude='hermes/profiles/*/python-packages' \
     --exclude='hermes/profiles/*/bin' \
     --exclude='hermes/profiles/*/lsp' \
     --exclude='hermes/profiles/*/cache' \
     --exclude='hermes/profiles/*/audio_cache' \
+    --exclude='hermes/profiles/*/sessions' \
     --exclude='*/__pycache__' \
     -C /data \
     hermes/profiles hermes/SOUL.md hermes/auth.json hermes/.env hermes/cron hermes/hooks \
