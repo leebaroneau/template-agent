@@ -108,3 +108,12 @@ security:
       - 'git\s+push\s+.*\s+main'
       - 'git\s+push\s+origin\s+main'
       - 'git\s+checkout\s+main'
+
+# STT defaults. `small` is the minimum quality threshold for accurate
+# transcription of voice notes containing names, numbers, and domain terms.
+# `base` (the Hermes upstream default) frequently mis-transcribes these.
+# Profiles that need faster-but-rougher transcription can override locally.
+stt:
+  provider: "local"
+  local:
+    model: "small"
