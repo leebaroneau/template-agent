@@ -117,16 +117,3 @@ stt:
   provider: "local"
   local:
     model: "small"
-
-# Smart model routing. Keeps the cheap/fast model as the conversational default
-# while auto-escalating skill execution and complex multi-step turns to a stronger
-# model. The fleet is Anthropic-based, so the skill model is claude-sonnet-4-6.
-# Brands on a non-Anthropic provider should override skill_model.provider/model
-# in their own seed/profile config. Without this, every profile runs the base
-# model for everything — capable conversational replies, but weak on skills and
-# multi-tool reasoning.
-smart_model_routing:
-  enabled: true
-  skill_model:
-    provider: anthropic
-    model: claude-sonnet-4-6
