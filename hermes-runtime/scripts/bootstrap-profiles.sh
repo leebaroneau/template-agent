@@ -318,6 +318,29 @@ if tmpl_toolsets and isinstance(tmpl_toolsets, list):
         added_toolsets = missing
         changed = True
 
+# stt — set if absent, and migrate profiles still on the upstream default "base"
+# model. "base" is the poorest-quality Whisper model and frequently mis-transcribes
+# names, numbers, and domain terms. The template default is "small".
+# Migration rule: update stt.local.model only when it is absent OR still "base"
+# (the known-bad default). Any other value the user has set is left alone.
+tmpl_stt = template.get("stt")
+if tmpl_stt and isinstance(tmpl_stt, dict):
+    tmpl_stt_local = tmpl_stt.get("local") or {}
+    tmpl_stt_model = tmpl_stt_local.get("model") if isinstance(tmpl_stt_local, dict) else None
+    profile_stt = profile.get("stt")
+    if profile_stt is None or not isinstance(profile_stt, dict):
+        profile["stt"] = tmpl_stt
+        changed = True
+    elif tmpl_stt_model:
+        profile_stt_local = profile_stt.get("local")
+        current_model = (profile_stt_local or {}).get("model") if isinstance(profile_stt_local, dict) else None
+        if current_model is None or current_model == "base":
+            if not isinstance(profile_stt_local, dict):
+                profile_stt["local"] = {"model": tmpl_stt_model}
+            else:
+                profile_stt_local["model"] = tmpl_stt_model
+            changed = True
+
 if not changed:
     sys.exit(0)
 
