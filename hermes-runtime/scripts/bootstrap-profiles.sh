@@ -302,6 +302,22 @@ if tmpl_sec and isinstance(tmpl_sec, dict):
             profile_approval["denylist"] = existing_dl + added_dl
             changed = True
 
+# toolsets — additive union (template items missing from profile list are appended)
+# This ensures built-in platform toolsets (e.g. hermes-telegram) are never
+# silently stripped when a brand seed writes a partial toolsets list containing
+# only its MCP toolset entry (mcp-<name>). Profile-specific entries are preserved.
+added_toolsets = []
+tmpl_toolsets = template.get("toolsets")
+if tmpl_toolsets and isinstance(tmpl_toolsets, list):
+    profile_toolsets = profile.get("toolsets")
+    if profile_toolsets is None or not isinstance(profile_toolsets, list):
+        profile_toolsets = []
+    missing = [t for t in tmpl_toolsets if t not in profile_toolsets]
+    if missing:
+        profile["toolsets"] = profile_toolsets + missing
+        added_toolsets = missing
+        changed = True
+
 if not changed:
     sys.exit(0)
 
@@ -312,6 +328,8 @@ if added_entries:
     print(f"[bootstrap] added mcp_servers to {profile_path}: {', '.join(added_entries)}", file=sys.stderr)
 for name, keys in merged_env.items():
     print(f"[bootstrap] merged env keys onto {name} in {profile_path}: {', '.join(keys)}", file=sys.stderr)
+if added_toolsets:
+    print(f"[bootstrap] added toolsets to {profile_path}: {', '.join(added_toolsets)}", file=sys.stderr)
 PYEOF
 }
 

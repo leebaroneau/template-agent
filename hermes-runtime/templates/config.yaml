@@ -21,6 +21,14 @@ mcp_servers:
       resources: false
       prompts: false
 
+# Default toolset for messaging gateway profiles (Telegram, WhatsApp, etc.).
+# hermes-telegram = hermes-cli in capabilities — full built-in toolkit.
+# Brand seeds that add MCP toolsets (mcp-<name>) append to this list;
+# bootstrap-profiles.sh merges missing items additively so no built-in
+# tool is accidentally stripped.
+toolsets:
+  - hermes-telegram
+
 memory:
   memory_enabled: true
   user_profile_enabled: true
