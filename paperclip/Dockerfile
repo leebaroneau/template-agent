@@ -34,7 +34,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     python3-venv \
     ripgrep \
     tini \
-    unzip
+    unzip \
+    libmagic1 \
+    poppler-utils \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    tesseract-ocr-osd
 
 RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked \
     curl -fsSL https://bun.sh/install | bash \
