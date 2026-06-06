@@ -77,6 +77,12 @@ const HERMES_TEMPLATE_SKIP_FILES = new Set([
   '.update_check',
   'auth.lock',
   'context_length_cache.yaml',
+  // Transient gateway lifecycle state — never seed into a profile. A stale
+  // .gateway-planned-stop.json (dead target PID) is honored at gateway startup,
+  // shutting the profile gateway down on every launch, and gets re-seeded each
+  // sync tick. See template-agent#232.
+  '.gateway-planned-stop.json',
+  '.clean_shutdown',
   'gateway_state.json',
   'kanban.db',
   'models_dev_cache.json',

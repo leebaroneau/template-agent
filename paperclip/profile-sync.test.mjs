@@ -495,6 +495,35 @@ test('ensureProfileHomes does not clone default Hermes runtime databases or sess
   }
 });
 
+test('ensureProfileHomes does not clone transient gateway lifecycle files into profiles', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-'));
+  try {
+    const hermesRoot = join(root, 'hermes');
+    await mkdir(hermesRoot, { recursive: true });
+    // Transient gateway state at the data root must never be seeded into a
+    // profile. The gateway honors .gateway-planned-stop.json at startup, so a
+    // stale one (dead target PID) makes the profile gateway shut down on every
+    // launch — re-seeded each sync tick. See template-agent#232.
+    await writeFile(
+      join(hermesRoot, '.gateway-planned-stop.json'),
+      '{"target_pid":595,"target_start_time":1,"stopper_pid":2,"written_at":"2026-05-17T10:47:27Z"}',
+    );
+    await writeFile(join(hermesRoot, '.clean_shutdown'), '');
+
+    const result = await ensureProfileHomes({
+      profileSlug: 'acme-researcher',
+      hermesDataRoot: hermesRoot,
+      templateDir: join(process.cwd(), 'hermes-runtime/templates'),
+    });
+
+    for (const relativePath of ['.gateway-planned-stop.json', '.clean_shutdown']) {
+      await assert.rejects(stat(join(result.hermesHome, relativePath)), { code: 'ENOENT' });
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('ensureProfileHomes pre-creates Hermes well-known subdirs with 0700 perms', async () => {
   const root = await mkdtemp(join(tmpdir(), 'profile-sync-prewarm-'));
   try {
