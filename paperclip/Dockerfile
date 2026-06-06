@@ -100,6 +100,16 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
        @openai/codex \
        @shopify/cli
 
+# Browser backend for the Hermes `browser` toolset. The Hermes installer is run
+# with --skip-browser (above), so install agent-browser + Chromium explicitly here.
+# Without this the browser tool silently fails: agents fall back to ad-hoc
+# Playwright (not installed) and time out on any portal/scrape task.
+# Chromium downloads to /root/.agent-browser (container runs as root → found at
+# runtime). NOTE: Salesforce-Lightning-class pages need swap or >=1GB free RAM to
+# render headless, or agent-browser returns "os error 11".
+RUN npm install -g --no-audit --no-fund agent-browser \
+  && agent-browser install --with-deps
+
 # Pre-install obra/superpowers methodology skills for Claude Code and Codex subagents.
 # Baked into the image because /home/node/.claude and /home/node/.codex are NOT on the
 # /data volume — runtime installs are wiped on every redeploy.
