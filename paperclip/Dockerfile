@@ -100,6 +100,39 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
        @openai/codex \
        @shopify/cli
 
+# Browser backend for the Hermes `browser` toolset. The Hermes installer is run
+# with --skip-browser (above), so install agent-browser + Chromium explicitly here.
+# Without this the browser tool silently fails: agents fall back to ad-hoc
+# Playwright (not installed) and time out on any portal/scrape task.
+#
+# Two correctness requirements (both were broken before — the CLI installed but
+# Chromium never launched at runtime):
+#  1. System libs. `agent-browser install --with-deps` shells out to `sudo apt-get`,
+#     but this slim image ships no `sudo`, so --with-deps was a silent no-op and
+#     Chromium's runtime libs were never installed. Install Chromium's declared
+#     deps (chrome-for-testing deb.deps set) directly via apt as root instead.
+#  2. Cache path. agent-browser caches Chromium under $HOME/.agent-browser. The
+#     build runs as root, but the runtime runs as the `node` user (HOME=/home/node,
+#     via `runuser -u node` in the entrypoints). So install with HOME=/home/node and
+#     chown the cache to node — otherwise node looks in /home/node/.agent-browser,
+#     finds nothing, and silently re-downloads into the ephemeral home (wiped on
+#     redeploy), which is the exact failure this layer is meant to prevent.
+# Runtime launches must pass --no-sandbox (no user namespaces in-container); brand
+# skills set AGENT_BROWSER_ARGS=--no-sandbox,--disable-dev-shm-usage or pass --args.
+# NOTE: Salesforce-Lightning-class pages need swap or >=1GB free RAM to render
+# headless, or agent-browser returns "os error 11".
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+       libasound2 libatk-bridge2.0-0 libatk1.0-0 libatspi2.0-0 libcairo2 libcups2 \
+       libdbus-1-3 libexpat1 libgbm1 libglib2.0-0 libgtk-3-0 libnspr4 libnss3 \
+       libpango-1.0-0 libudev1 libvulkan1 libx11-6 libxcb1 libxcomposite1 \
+       libxdamage1 libxext6 libxfixes3 libxkbcommon0 libxrandr2 \
+       fonts-liberation ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && npm install -g --no-audit --no-fund agent-browser@0.27.0 \
+  && HOME=/home/node agent-browser install \
+  && chown -R node:node /home/node/.agent-browser
+
 # Pre-install obra/superpowers methodology skills for Claude Code and Codex subagents.
 # Baked into the image because /home/node/.claude and /home/node/.codex are NOT on the
 # /data volume — runtime installs are wiped on every redeploy.
