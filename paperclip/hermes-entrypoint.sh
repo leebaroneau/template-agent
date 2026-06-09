@@ -149,9 +149,22 @@ _seed_key() {
     echo "[hermes-entrypoint] Seeded ${key} into ~/.hermes/.env"
   fi
 }
+# Anthropic / OpenAI / Google
 _seed_key ANTHROPIC_API_KEY
 _seed_key OPENAI_API_KEY
 _seed_key GEMINI_API_KEY
+_seed_key GOOGLE_API_KEY
+# Aggregators / routers
+_seed_key OPENROUTER_API_KEY
+_seed_key NOUS_API_KEY
+_seed_key TOGETHER_API_KEY
+_seed_key GROQ_API_KEY
+# Other providers
+_seed_key MISTRAL_API_KEY
+_seed_key COHERE_API_KEY
+_seed_key DEEPSEEK_API_KEY
+_seed_key XAI_API_KEY
+_seed_key PERPLEXITY_API_KEY
 
 # Lazy-install heavy optional packages to the persistent /data volume so they
 # survive restarts without bloating the image. PYTHONPATH is exported so the
