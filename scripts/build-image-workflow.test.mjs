@@ -41,14 +41,15 @@ test('compose leaves proxy routing labels to Coolify', async () => {
   assert.doesNotMatch(compose, /caddy_/);
 });
 
-test('build audits the image, then tags and pushes sha + latest', async () => {
+test('build pushes sha + latest tags and audits the image', async () => {
   const workflow = await readFile('.github/workflows/build-image.yml', 'utf8');
 
-  assert.match(workflow, /docker build -f paperclip\/Dockerfile -t "\$LOCAL_IMAGE" \./);
-  assert.match(workflow, /audit-blank-image\.sh "\$LOCAL_IMAGE"/);
-  assert.match(workflow, /docker tag "\$LOCAL_IMAGE" "\$REMOTE_IMAGE:sha-\$\{GITHUB_SHA\}"/);
-  assert.match(workflow, /docker tag "\$LOCAL_IMAGE" "\$REMOTE_IMAGE:latest"/);
-  assert.match(workflow, /docker push "\$REMOTE_IMAGE:sha-\$\{GITHUB_SHA\}"/);
+  // buildx --push streams directly to registry; audit pulls after push
+  assert.match(workflow, /docker\/build-push-action/);
+  assert.match(workflow, /push:\s*true/);
+  // SHA resolved via steps.sha.outputs.sha to handle workflow_run event correctly
+  assert.match(workflow, /sha-\$\{\{[\s]*steps\.sha\.outputs\.sha[\s]*\}\}/);
+  assert.match(workflow, /audit-blank-image\.sh/);
 });
 
 test('production deploy webhooks only run from main branch image builds', async () => {

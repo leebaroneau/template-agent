@@ -3,6 +3,13 @@ name: Build & push agent stack image
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - paperclip/Dockerfile.hermes-base
+      - paperclip/Dockerfile.paperclip-base
+  workflow_run:
+    workflows: ["Build paperclip-base image"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       force:
@@ -21,9 +28,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     env:
-      DOCKER_BUILDKIT: "1"
-      LOCAL_IMAGE: template-agent:audit-${{ github.sha }}
       REMOTE_IMAGE: ghcr.io/leebaroneau/template-agent
     steps:
       - name: Free disk space
@@ -50,23 +56,39 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build local audit image
-        run: docker build -f paperclip/Dockerfile -t "$LOCAL_IMAGE" .
-
-      - name: Audit blank image
-        run: ./scripts/audit-blank-image.sh "$LOCAL_IMAGE"
-
-      - name: Push release images
+      - name: Resolve commit SHA
+        id: sha
         run: |
-          docker tag "$LOCAL_IMAGE" "$REMOTE_IMAGE:sha-${GITHUB_SHA}"
-          docker push "$REMOTE_IMAGE:sha-${GITHUB_SHA}"
-          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
-            docker tag "$LOCAL_IMAGE" "$REMOTE_IMAGE:latest"
-            docker push "$REMOTE_IMAGE:latest"
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Build and push template-agent
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: paperclip/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REMOTE_IMAGE }}:sha-${{ steps.sha.outputs.sha }}
+            ${{ env.REMOTE_IMAGE }}:latest
+          cache-from: |
+            type=registry,ref=ghcr.io/leebaroneau/template-agent:buildcache
+            type=registry,ref=ghcr.io/leebaroneau/paperclip-base:buildcache
+            type=gha
+          cache-to: |
+            type=registry,ref=ghcr.io/leebaroneau/template-agent:buildcache,mode=max
+            type=gha,mode=max
+
+      - name: Audit blank image
+        run: |
+          docker pull "$REMOTE_IMAGE:sha-${{ steps.sha.outputs.sha }}"
+          ./scripts/audit-blank-image.sh "$REMOTE_IMAGE:sha-${{ steps.sha.outputs.sha }}"
+
       - name: Trigger ALX Coolify deploy
-        if: success() && github.ref == 'refs/heads/main' && vars.COOLIFY_ALX_BASE_URL != '' && vars.COOLIFY_ALX_APP_UUID != ''
+        if: success() && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_run') && vars.COOLIFY_ALX_BASE_URL != '' && vars.COOLIFY_ALX_APP_UUID != ''
         run: |
           curl -sf -X GET \
             -H "Authorization: Bearer ${{ secrets.COOLIFY_ALX_TOKEN }}" \
@@ -74,7 +96,7 @@ jobs:
             || echo "ALX deploy trigger failed (non-fatal)"
 
       - name: Trigger Haverford Coolify deploy
-        if: success() && github.ref == 'refs/heads/main' && vars.COOLIFY_HAVERFORD_BASE_URL != '' && vars.COOLIFY_HAVERFORD_APP_UUID != ''
+        if: success() && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_run') && vars.COOLIFY_HAVERFORD_BASE_URL != '' && vars.COOLIFY_HAVERFORD_APP_UUID != ''
         run: |
           curl -sf -X GET \
             -H "Authorization: Bearer ${{ secrets.COOLIFY_HAVERFORD_TOKEN }}" \
@@ -82,7 +104,7 @@ jobs:
             || echo "Haverford deploy trigger failed (non-fatal)"
 
       - name: Trigger Genvest Coolify deploy
-        if: success() && github.ref == 'refs/heads/main' && vars.COOLIFY_GENVEST_BASE_URL != '' && vars.COOLIFY_GENVEST_APP_UUID != ''
+        if: success() && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_run') && vars.COOLIFY_GENVEST_BASE_URL != '' && vars.COOLIFY_GENVEST_APP_UUID != ''
         run: |
           curl -sf -X GET \
             -H "Authorization: Bearer ${{ secrets.COOLIFY_GENVEST_TOKEN }}" \

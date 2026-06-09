@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1.7
+# Tier 2: paperclip-base
+# Publishes: ghcr.io/leebaroneau/paperclip-base:latest
+# Rebuild when: PAPERCLIP_GIT_REF bumps or hermes-base is updated (~4 min, infrequent)
+ARG HERMES_BASE_TAG=latest
+FROM ghcr.io/leebaroneau/hermes-base:${HERMES_BASE_TAG}
+
+ARG PAPERCLIP_VERSION=2026.525.0
+ARG PAPERCLIP_GIT_REPO=https://github.com/paperclipai/paperclip.git
+ARG PAPERCLIP_GIT_REF=refs/pull/6243/head
+
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    if [ -n "${PAPERCLIP_GIT_REF}" ]; then \
+      git clone --filter=blob:none "${PAPERCLIP_GIT_REPO}" "${PAPERCLIP_SOURCE_DIR}" \
+      && cd "${PAPERCLIP_SOURCE_DIR}" \
+      && git fetch --depth 1 origin "${PAPERCLIP_GIT_REF}" \
+      && git checkout FETCH_HEAD \
+      && npm install -g pnpm@9.15.4 \
+      && pnpm config set store-dir /opt/pnpm-store \
+      && pnpm install --frozen-lockfile \
+      && pnpm build \
+      && PAPERCLIP_RELEASE_REUSE_UI_DIST=1 pnpm --filter @paperclipai/server prepare:ui-dist \
+      && printf '%s\n' '#!/usr/bin/env bash' 'exec node /opt/paperclip-src/cli/node_modules/tsx/dist/cli.mjs /opt/paperclip-src/cli/src/index.ts "$@"' > /usr/local/bin/paperclipai \
+      && chmod +x /usr/local/bin/paperclipai \
+      && npm uninstall -g pnpm \
+      && paperclipai --version; \
+    else \
+      npm install -g "paperclipai@${PAPERCLIP_VERSION}"; \
+    fi
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+       libasound2 libatk-bridge2.0-0 libatk1.0-0 libatspi2.0-0 libcairo2 libcups2 \
+       libdbus-1-3 libexpat1 libgbm1 libglib2.0-0 libgtk-3-0 libnspr4 libnss3 \
+       libpango-1.0-0 libudev1 libvulkan1 libx11-6 libxcb1 libxcomposite1 \
+       libxdamage1 libxext6 libxfixes3 libxkbcommon0 libxrandr2 \
+       fonts-liberation ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && npm install -g --no-audit --no-fund agent-browser@0.27.0 \
+  && HOME=/home/node agent-browser install \
+  && chown -R node:node /home/node/.agent-browser
