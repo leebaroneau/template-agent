@@ -20,9 +20,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  # Skip the push trigger if hermes-base also changed in this commit —
+  # the workflow_run cascade from build-hermes-base will handle it in order.
+  preflight:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+      - id: check
+        run: |
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only HEAD^ HEAD | grep -qE 'paperclip/Dockerfile\.hermes-base'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: preflight
+    runs-on: ubuntu-latest
+    if: |
+      needs.preflight.outputs.skip != 'true' &&
+      (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     steps:
       - name: Free disk space
         uses: jlumbroso/free-disk-space@main
