@@ -137,6 +137,22 @@ case "${HERMES_DASHBOARD_ENABLED:-0}" in
     ;;
 esac
 
+# Lazy-install heavy optional packages to the persistent /data volume so they
+# survive restarts without bloating the image. PYTHONPATH is exported so the
+# Hermes venv discovers them alongside the baked-in site-packages.
+_EXTRAS_DIR="${HERMES_DATA_ROOT:-/data/hermes}/pip-extras"
+mkdir -p "$_EXTRAS_DIR"
+if ! /usr/local/lib/hermes-agent/venv/bin/python -c "import marker" 2>/dev/null; then
+  echo "[hermes-entrypoint] Installing marker-pdf to volume (first run — takes ~2 min)..."
+  /opt/hermes-bootstrap/bin/uv pip install \
+    --python /usr/local/lib/hermes-agent/venv/bin/python \
+    --target "$_EXTRAS_DIR" \
+    marker-pdf 2>&1 | tail -5 \
+    && echo "[hermes-entrypoint] marker-pdf installed." \
+    || echo "[hermes-entrypoint] marker-pdf install failed — scanned PDF OCR unavailable."
+fi
+export PYTHONPATH="${_EXTRAS_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
+
 host="${HERMES_DASHBOARD_HOST:-0.0.0.0}"
 port="${HERMES_DASHBOARD_PORT:-9119}"
 args=(dashboard --host "$host" --port "$port" --no-open)

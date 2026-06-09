@@ -68,8 +68,10 @@ else:
 
 ### PDF — scanned (high-quality OCR via marker-pdf)
 
-Use when the text-layer path returns empty. **First call downloads surya models
-(~1.5GB) to `/data/hermes/model-cache/` — takes a few minutes once, then instant.**
+Use when the text-layer path returns empty. `marker-pdf` is lazy-installed to
+`/data/hermes/pip-extras/` on first container boot — available by the time
+you need it. **First import downloads surya models (~1.5GB) to
+`/data/hermes/model-cache/` — takes a few minutes once, then instant.**
 
 ```python
 from marker.convert import convert_single_pdf
