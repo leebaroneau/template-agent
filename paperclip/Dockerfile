@@ -4,7 +4,7 @@ FROM node:22-bookworm-slim
 ARG PAPERCLIP_VERSION=2026.525.0
 ARG PAPERCLIP_GIT_REPO=https://github.com/paperclipai/paperclip.git
 ARG PAPERCLIP_GIT_REF=refs/pull/6243/head
-ARG HERMES_AGENT_REF=v2026.5.29
+ARG HERMES_AGENT_REF=v2026.6.5
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PAPERCLIP_HOME=/data
