@@ -62,6 +62,8 @@ done
 for file in \
   "compose.yaml" \
   "paperclip/Dockerfile" \
+  "paperclip/Dockerfile.hermes-base" \
+  "paperclip/Dockerfile.paperclip-base" \
   "paperclip/entrypoint.sh" \
   "paperclip/hermes-entrypoint.sh" \
   "paperclip/seed-agents.mjs"; do
