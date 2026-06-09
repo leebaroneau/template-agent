@@ -137,6 +137,35 @@ case "${HERMES_DASHBOARD_ENABLED:-0}" in
     ;;
 esac
 
+# Seed API keys from container env into ~/.hermes/.env so they appear in the
+# Hermes key management UI. Only adds missing keys — keys already in the file
+# (set via the UI or a prior seed) are never overwritten.
+_HERMES_ENV="${HERMES_DATA_ROOT:-/data/hermes}/.env"
+_seed_key() {
+  local key="$1"
+  local val="${!key:-}"
+  if [[ -n "$val" ]] && ! grep -q "^${key}=" "$_HERMES_ENV" 2>/dev/null; then
+    echo "${key}=${val}" >> "$_HERMES_ENV"
+    echo "[hermes-entrypoint] Seeded ${key} into ~/.hermes/.env"
+  fi
+}
+# Anthropic / OpenAI / Google
+_seed_key ANTHROPIC_API_KEY
+_seed_key OPENAI_API_KEY
+_seed_key GEMINI_API_KEY
+_seed_key GOOGLE_API_KEY
+# Aggregators / routers
+_seed_key OPENROUTER_API_KEY
+_seed_key NOUS_API_KEY
+_seed_key TOGETHER_API_KEY
+_seed_key GROQ_API_KEY
+# Other providers
+_seed_key MISTRAL_API_KEY
+_seed_key COHERE_API_KEY
+_seed_key DEEPSEEK_API_KEY
+_seed_key XAI_API_KEY
+_seed_key PERPLEXITY_API_KEY
+
 # Lazy-install heavy optional packages to the persistent /data volume so they
 # survive restarts without bloating the image. PYTHONPATH is exported so the
 # Hermes venv discovers them alongside the baked-in site-packages.
