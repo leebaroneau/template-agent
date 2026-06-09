@@ -23,7 +23,9 @@ check_absent() {
 check_absent ".env.example" "^${provider_keys}=" "fresh local env should not seed LLM keys"
 check_absent ".env.coolify.example" "^${provider_keys}=" "fresh Coolify env should not seed LLM keys"
 check_absent "scripts/coolify-env.sh" "^${provider_keys}=" "generated Coolify env should not seed LLM keys"
-check_absent "compose.yaml" "${provider_keys}:[[:space:]]*\\$\\{${provider_keys}:-\\}" "compose should not inject blank provider env"
+# Allow empty-default passthroughs (${VAR:-}) so Coolify-injected keys reach the
+# hermes container for credential pool seeding. Block hardcoded / non-empty values.
+check_absent "compose.yaml" "${provider_keys}:[[:space:]]*[\"']?[[:alnum:]+/]" "compose should not hardcode LLM API key values"
 check_absent "hermes-runtime/scripts/bootstrap-profiles.sh" "printf '${provider_keys}=%s\\\\n' \"\\$\\{${provider_keys}:-\\}\"" "bootstrap should not write empty provider keys"
 
 if [[ "$failed" -ne 0 ]]; then
