@@ -22,8 +22,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      DOCKER_BUILDKIT: "1"
-      LOCAL_IMAGE: template-agent:audit-${{ github.sha }}
       REMOTE_IMAGE: ghcr.io/leebaroneau/template-agent
     steps:
       - name: Free disk space
@@ -50,20 +48,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build local audit image
-        run: docker build -f paperclip/Dockerfile -t "$LOCAL_IMAGE" .
+      - name: Build and push template-agent
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: paperclip/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REMOTE_IMAGE }}:sha-${{ github.sha }}
+            ${{ env.REMOTE_IMAGE }}:latest
+          cache-from: |
+            type=registry,ref=ghcr.io/leebaroneau/paperclip-base:latest
+            type=gha
+          cache-to: type=gha,mode=max
 
       - name: Audit blank image
-        run: ./scripts/audit-blank-image.sh "$LOCAL_IMAGE"
-
-      - name: Push release images
         run: |
-          docker tag "$LOCAL_IMAGE" "$REMOTE_IMAGE:sha-${GITHUB_SHA}"
-          docker push "$REMOTE_IMAGE:sha-${GITHUB_SHA}"
-          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
-            docker tag "$LOCAL_IMAGE" "$REMOTE_IMAGE:latest"
-            docker push "$REMOTE_IMAGE:latest"
-          fi
+          docker pull "$REMOTE_IMAGE:sha-${GITHUB_SHA}"
+          ./scripts/audit-blank-image.sh "$REMOTE_IMAGE:sha-${GITHUB_SHA}"
 
       - name: Trigger ALX Coolify deploy
         if: success() && github.ref == 'refs/heads/main' && vars.COOLIFY_ALX_BASE_URL != '' && vars.COOLIFY_ALX_APP_UUID != ''
