@@ -40,7 +40,7 @@ expect_contains "paperclip/entrypoint.sh" 'HERMES_PROFILES="\$\{HERMES_PROFILES:
 expect_contains "paperclip/hermes-entrypoint.sh" 'HERMES_PROFILES="\$\{HERMES_PROFILES:-default\}"' "Hermes runtime should default to only default"
 expect_contains "paperclip/seed-agents.mjs" "profile: 'default'" "seed script should create only the default-profile agent"
 expect_contains "compose.yaml" 'HERMES_HOME: /data/hermes$' "compose should point default Hermes home at the Hermes root"
-expect_contains "paperclip/Dockerfile" '^ENV HERMES_HOME=/data/hermes$' "image default Hermes home should be the Hermes root"
+expect_contains "paperclip/Dockerfile.hermes-base" '^ENV HERMES_HOME=/data/hermes$' "image default Hermes home should be the Hermes root"
 expect_contains "paperclip/entrypoint.sh" 'HERMES_HOME="\$\{HERMES_HOME:-\$HERMES_DATA_ROOT\}"' "Paperclip runtime should point default Hermes home at the Hermes root"
 expect_contains "paperclip/hermes-entrypoint.sh" 'HERMES_HOME="\$\{HERMES_HOME:-\$HERMES_DATA_ROOT\}"' "Hermes runtime should point default Hermes home at the Hermes root"
 expect_contains "paperclip/seed-agents.mjs" "profile === 'default'" "seeded default agent should special-case the default profile"
