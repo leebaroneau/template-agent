@@ -56,6 +56,7 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
   && git fetch --depth 1 origin "${HERMES_AGENT_REF}" \
   && git checkout FETCH_HEAD \
   && python3 -m py_compile "$HERMES_SRC/run_agent.py" \
+  && export PATH="/opt/hermes-bootstrap/bin:${PATH}" \
   && (uv pip install --python ./venv/bin/python -e ".[all,messaging]" \
         || uv pip install --python ./venv/bin/python -e ".[all]" \
         || uv pip install --python ./venv/bin/python -e .) \
