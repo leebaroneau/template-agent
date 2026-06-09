@@ -13,7 +13,7 @@ async function file(path) {
 test('compose keeps Hermes headless and unrouted by default', async () => {
   const compose = await file('compose.yaml');
 
-  assert.match(compose, /HERMES_DASHBOARD_ENABLED:\s*\$\{HERMES_DASHBOARD_ENABLED:-0\}/);
+  assert.match(compose, /HERMES_DASHBOARD_ENABLED:\s*\$\{HERMES_DASHBOARD_ENABLED:-1\}/);
   assert.doesNotMatch(compose, /hermes-auth/);
   assert.doesNotMatch(compose, /traefik\.http\.routers\.hermes/);
   assert.match(compose, /healthcheck:\s*\n\s+test:\s*\["CMD", "test", "-f", "\/tmp\/hermes-entrypoint-ready"\]/);
@@ -31,13 +31,13 @@ test('Hermes entrypoint can stay alive for gateways without starting the dashboa
 test('example env files make Hermes dashboard opt-in', async () => {
   for (const path of ['.env.example', '.env.coolify.example']) {
     const env = await file(path);
-    assert.match(env, /^HERMES_DASHBOARD_ENABLED=0$/m, `${path} should disable the dashboard by default`);
+    assert.match(env, /^HERMES_DASHBOARD_ENABLED=1$/m, `${path} should enable the dashboard by default`);
   }
 });
 
 test('Coolify env helper emits a headless Hermes default', async () => {
   const helper = await file('scripts/coolify-env.sh');
 
-  assert.match(helper, /^HERMES_DASHBOARD_ENABLED=0$/m);
+  assert.match(helper, /^HERMES_DASHBOARD_ENABLED=1$/m);
   assert.doesNotMatch(helper, /^HERMES_HOSTNAME=/m);
 });
