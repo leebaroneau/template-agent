@@ -48,6 +48,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve commit SHA
+        id: sha
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push paperclip-base
         uses: docker/build-push-action@v5
         with:
@@ -55,9 +64,12 @@ jobs:
           file: paperclip/Dockerfile.paperclip-base
           push: true
           tags: |
-            ghcr.io/leebaroneau/paperclip-base:sha-${{ github.sha }}
+            ghcr.io/leebaroneau/paperclip-base:sha-${{ steps.sha.outputs.sha }}
             ghcr.io/leebaroneau/paperclip-base:latest
           cache-from: |
-            type=registry,ref=ghcr.io/leebaroneau/hermes-base:latest
+            type=registry,ref=ghcr.io/leebaroneau/paperclip-base:buildcache
+            type=registry,ref=ghcr.io/leebaroneau/hermes-base:buildcache
             type=gha
-          cache-to: type=gha,mode=max
+          cache-to: |
+            type=registry,ref=ghcr.io/leebaroneau/paperclip-base:buildcache,mode=max
+            type=gha,mode=max

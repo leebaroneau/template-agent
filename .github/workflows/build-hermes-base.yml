@@ -68,5 +68,9 @@ jobs:
           tags: |
             ghcr.io/leebaroneau/hermes-base:${{ steps.ref.outputs.ref }}
             ghcr.io/leebaroneau/hermes-base:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=registry,ref=ghcr.io/leebaroneau/hermes-base:buildcache
+            type=gha
+          cache-to: |
+            type=registry,ref=ghcr.io/leebaroneau/hermes-base:buildcache,mode=max
+            type=gha,mode=max

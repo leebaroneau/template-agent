@@ -47,7 +47,8 @@ test('build pushes sha + latest tags and audits the image', async () => {
   // buildx --push streams directly to registry; audit pulls after push
   assert.match(workflow, /docker\/build-push-action/);
   assert.match(workflow, /push:\s*true/);
-  assert.match(workflow, /sha-\$\{\{[\s]*github\.sha[\s]*\}\}/);
+  // SHA resolved via steps.sha.outputs.sha to handle workflow_run event correctly
+  assert.match(workflow, /sha-\$\{\{[\s]*steps\.sha\.outputs\.sha[\s]*\}\}/);
   assert.match(workflow, /audit-blank-image\.sh/);
 });
 
