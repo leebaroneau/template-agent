@@ -145,10 +145,6 @@ if [[ "$host" != "127.0.0.1" && "$host" != "localhost" ]]; then
   args+=(--insecure)
 fi
 
-case "${HERMES_DASHBOARD_TUI:-1}" in
-  1|true|TRUE|True|yes|YES|Yes) args+=(--tui) ;;
-esac
-
 case "${HERMES_DASHBOARD_SKIP_BUILD:-1}" in
   1|true|TRUE|True|yes|YES|Yes) args+=(--skip-build) ;;
 esac
