@@ -137,10 +137,23 @@ case "${HERMES_DASHBOARD_ENABLED:-0}" in
     ;;
 esac
 
-# Seed API keys from container env into the Hermes credential pool so they
-# appear in the key management UI. Only adds missing providers — keys already
-# in the pool (set via the UI or a prior seed) are never overwritten.
-/usr/local/lib/hermes-agent/venv/bin/python /opt/hermes-runtime/scripts/seed-credentials.py || true
+# Seed provider API keys into $HERMES_HOME/.env — the file Hermes natively
+# reads and that the key management UI shows as "~/.hermes/.env". Only writes
+# keys that are (a) present in the container env and (b) not already in the
+# file, so keys set or rotated via the Hermes UI survive redeployments.
+_hermes_env_file="${HERMES_HOME}/.env"
+for _pkey in ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY GOOGLE_API_KEY \
+             OPENROUTER_API_KEY NOUS_API_KEY TOGETHER_API_KEY GROQ_API_KEY \
+             MISTRAL_API_KEY COHERE_API_KEY DEEPSEEK_API_KEY XAI_API_KEY \
+             PERPLEXITY_API_KEY; do
+  _pval="${!_pkey:-}"
+  [[ -n "$_pval" ]] || continue
+  grep -q "^${_pkey}=" "$_hermes_env_file" 2>/dev/null && continue
+  printf '%s=%s\n' "$_pkey" "$_pval" >> "$_hermes_env_file"
+  echo "[hermes-entrypoint] seeded ${_pkey} to ${_hermes_env_file}"
+done
+chown node:node "$_hermes_env_file" 2>/dev/null || true
+unset _hermes_env_file _pkey _pval
 
 # Lazy-install heavy optional packages to the persistent /data volume so they
 # survive restarts without bloating the image. PYTHONPATH is exported so the

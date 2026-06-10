@@ -88,10 +88,25 @@ services:
       HERMES_DASHBOARD_BASIC_AUTH_USERNAME: ${HERMES_DASHBOARD_BASIC_AUTH_USERNAME:-}
       HERMES_DASHBOARD_BASIC_AUTH_PASSWORD: ${HERMES_DASHBOARD_BASIC_AUTH_PASSWORD:-}
       HERMES_DASHBOARD_BASIC_AUTH_SECRET: ${HERMES_DASHBOARD_BASIC_AUTH_SECRET:-}
-      # Provider API keys are NOT listed here intentionally. Coolify auto-discovers
-      # ${VAR:-} references and creates empty placeholder env entries that shadow the
-      # real values set in the Coolify UI. Keys set in Coolify are injected into the
-      # container at runtime without needing an explicit compose.yaml entry.
+      # Provider API keys — passed through so the hermes entrypoint can seed them
+      # into $HERMES_HOME/.env (the file Hermes key management UI reads/writes).
+      # Coolify setup order matters: these vars will auto-appear as blank placeholders
+      # in the Coolify UI on first deploy — set the real values there, then redeploy.
+      # The entrypoint only writes a key if it is absent from the .env file, so keys
+      # managed via the Hermes UI survive redeployments unchanged.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      NOUS_API_KEY: ${NOUS_API_KEY:-}
+      TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      COHERE_API_KEY: ${COHERE_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      XAI_API_KEY: ${XAI_API_KEY:-}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
     expose:
       - "9119"
     volumes:
