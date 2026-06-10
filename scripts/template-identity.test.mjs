@@ -63,6 +63,7 @@ test('local build override builds the template-agent image from this repository'
 
   assert.match(compose, /image:\s*\$\{TEMPLATE_AGENT_IMAGE:-template-agent:local\}/);
   assert.equal(buildBlocks.length, 1);
+  assert.match(compose, /hermes:\s*\n\s+image:\s*\$\{TEMPLATE_AGENT_IMAGE:-template-agent:local\}\s*\n\s+build:/);
   assert.match(compose, /pull_policy:\s*build/);
   assert.match(compose, /pull_policy:\s*never/);
 });

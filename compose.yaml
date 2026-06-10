@@ -2,7 +2,9 @@ services:
   paperclip:
     image: ${TEMPLATE_AGENT_IMAGE:-ghcr.io/leebaroneau/template-agent:latest}
     pull_policy: always
+    scale: ${PAPERCLIP_ENABLED:-0}
     environment:
+      PAPERCLIP_ENABLED: ${PAPERCLIP_ENABLED:-0}
       PAPERCLIP_HOME: /data
       PAPERCLIP_TELEMETRY_DISABLED: ${PAPERCLIP_TELEMETRY_DISABLED:-1}
       PAPERCLIP_BIND: lan
@@ -29,8 +31,6 @@ services:
       HERMES_HOME: /data/hermes
       HERMES_PROFILES: ${HERMES_PROFILES:-default}
       PAPERCLIP_API_URL: http://127.0.0.1:3100
-      # PROFILE_SYNC_ENABLED: not set — profile-sync starts automatically when
-      # PAPERCLIP_PROFILE_SYNC_API_KEY is present. Set PROFILE_SYNC_ENABLED=0 to disable.
       PROFILE_SYNC_INTERVAL_SEC: ${PROFILE_SYNC_INTERVAL_SEC:-60}
       PROFILE_SYNC_DELETE_MODE: ${PROFILE_SYNC_DELETE_MODE:-archive}
       PROFILE_SYNC_MANIFEST_PATH: /data/agent-stack/profile-sync/manifest.json
@@ -63,6 +63,7 @@ services:
       HERMES_DATA_ROOT: /data/hermes
       HERMES_HOME: /data/hermes
       HERMES_PROFILES: ${HERMES_PROFILES:-default}
+      PAPERCLIP_ENABLED: ${PAPERCLIP_ENABLED:-0}
       HERMES_DASHBOARD_ENABLED: ${HERMES_DASHBOARD_ENABLED:-1}
       HERMES_DASHBOARD_HOST: 0.0.0.0
       HERMES_DASHBOARD_PORT: "9119"
@@ -112,8 +113,6 @@ services:
       - "9119"
     volumes:
       - paperclip-data:/data
-    depends_on:
-      - paperclip
     healthcheck:
       test: ["CMD", "test", "-f", "/tmp/hermes-entrypoint-ready"]
       interval: 30s
