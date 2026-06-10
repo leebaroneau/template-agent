@@ -86,7 +86,7 @@ Then restart the `hermes` container — it sources `profile-sync.env` at startup
 
 ### Profile-sync and the Org Chart
 
-Profile-sync is **key-gated**: it starts automatically when `PAPERCLIP_PROFILE_SYNC_API_KEY` is present, skips silently when it is not. There is no separate enable flag to set.
+Paperclip is disabled by default. Profile-sync follows `PAPERCLIP_ENABLED`: when `PAPERCLIP_ENABLED=1` and `PAPERCLIP_PROFILE_SYNC_API_KEY` or `PAPERCLIP_API_KEY` is present, the Paperclip container starts the embedded profile-sync loop. With `PAPERCLIP_ENABLED=0`, Paperclip and profile-sync both stay idle.
 
 Once running, profile-sync:
 - Writes `/data/agent-stack/org-chart.md` and `org-chart.json` (updated every 60 s)
@@ -95,7 +95,7 @@ Once running, profile-sync:
 
 Agents read `/data/agent-stack/org-chart.md` to resolve delegation targets. The `delegation-protocol.md` is seeded to every Hermes profile by `bootstrap-profiles.sh` and references this path.
 
-Set `PROFILE_SYNC_ENABLED=0` only to explicitly disable profile-sync (e.g. local dev without a running Paperclip).
+Do not add a separate operator-facing profile-sync switch. `PAPERCLIP_ENABLED` is the lifecycle gate; the entrypoint passes the internal `PROFILE_SYNC_ENABLED=1` only to satisfy `profile-sync.mjs`.
 
 ### Do NOT override `PAPERCLIP_ALLOWED_HOSTNAMES` in Coolify
 
