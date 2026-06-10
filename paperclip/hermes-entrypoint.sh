@@ -175,9 +175,9 @@ host="${HERMES_DASHBOARD_HOST:-0.0.0.0}"
 port="${HERMES_DASHBOARD_PORT:-9119}"
 args=(dashboard --host "$host" --port "$port" --no-open)
 
-if [[ "$host" != "127.0.0.1" && "$host" != "localhost" ]]; then
-  args+=(--insecure)
-fi
+case "${HERMES_DASHBOARD_INSECURE:-0}" in
+  1|true|TRUE|True|yes|YES|Yes|on|ON|On) args+=(--insecure) ;;
+esac
 
 case "${HERMES_DASHBOARD_SKIP_BUILD:-1}" in
   1|true|TRUE|True|yes|YES|Yes) args+=(--skip-build) ;;
