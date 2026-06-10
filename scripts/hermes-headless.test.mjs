@@ -28,6 +28,18 @@ test('Hermes entrypoint can stay alive for gateways without starting the dashboa
   assert.match(entrypoint, /args=\(dashboard --host "\$host" --port "\$port" --no-open\)/);
 });
 
+test('Hermes entrypoint keeps dashboard auth enabled on remote bind by default', async () => {
+  const entrypoint = await file('paperclip/hermes-entrypoint.sh');
+  const compose = await file('compose.yaml');
+
+  assert.match(compose, /HERMES_DASHBOARD_INSECURE:\s*\$\{HERMES_DASHBOARD_INSECURE:-0\}/);
+  assert.match(entrypoint, /HERMES_DASHBOARD_INSECURE:-0/);
+  assert.doesNotMatch(
+    entrypoint,
+    /if \[\[ "\$host" != "127\.0\.0\.1" && "\$host" != "localhost" \]\]; then\s+args\+=\(--insecure\)\s+fi/
+  );
+});
+
 test('example env files make Hermes dashboard opt-in', async () => {
   for (const path of ['.env.example', '.env.coolify.example']) {
     const env = await file(path);
