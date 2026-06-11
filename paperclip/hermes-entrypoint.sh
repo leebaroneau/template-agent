@@ -21,6 +21,8 @@ fi
 rm -f /tmp/hermes-entrypoint-ready
 
 mkdir -p "$HERMES_DATA_ROOT" /home/node/.hermes /opt/work /data/.locks
+# Stamp install method so `hermes update` shows correct Docker guidance instead of trying git fetch.
+echo docker > "${HERMES_HOME}/.install_method"
 if [[ ! -e /hermes || -L /hermes ]]; then
   ln -sfn /data /hermes
 fi
