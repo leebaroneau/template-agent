@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - paperclip/Dockerfile.hermes-base
+  schedule:
+    - cron: '0 18 * * *'  # 04:00 AEST daily (UTC+10)
   workflow_dispatch:
     inputs:
       hermes_agent_ref:
