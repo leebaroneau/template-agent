@@ -60,6 +60,7 @@ if [[ ! -f /home/node/.hermes/config.yaml && -f "$HERMES_HOME/config.yaml" ]]; t
 fi
 
 node /opt/paperclip/patch-hermes-profile-skill-count.mjs
+node /opt/paperclip/patch-hermes-update-message.mjs || echo "[hermes-entrypoint] patch-hermes-update-message skipped (non-fatal)"
 
 profile_has_gateway_env() {
   local profile_home="$1"
