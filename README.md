@@ -1,6 +1,6 @@
 # Template Agent
 
-Blank Coolify-ready template for running Paperclip with Hermes Agent.
+Blank Coolify-ready template for running Hermes Agent, with Paperclip available as an explicit opt-in control plane.
 
 This repo is intentionally client-neutral. It should contain the deploy recipe only. Paperclip projects, Hermes profiles, API keys, and client data are created at runtime inside the Coolify volume mounted at `/data`.
 
@@ -16,8 +16,8 @@ Production Coolify deploys should pull a prebuilt image from GitHub Container Re
 **Rules for any change you propose:**
 
 - A push to a watched branch can redeploy **every Coolify watching that branch — simultaneously**. Treat every commit as a multi-tenant change.
-- Per-company customization lives in **Coolify env vars only** (`PAPERCLIP_HOSTNAME`, `PAPERCLIP_API_KEY`, `PAPERCLIP_DEFAULT_COMPANY_ID`, `HERMES_PROFILES`, `PROFILE_SYNC_ENABLED`, `HERMES_DASHBOARD_ENABLED`, …) — **never** introduce per-brand branches or hard-coded brand specifics in `compose.yaml`.
-- Hermes dashboard is **off by default**. Do not expose a Hermes service domain unless `HERMES_DASHBOARD_ENABLED=1` is intentional for that deployment. Use Paperclip as the primary UI, and use Hermes CLI/MCP/gateways behind it.
+- Per-company customization lives in **Coolify env vars only** (`PAPERCLIP_ENABLED`, `PAPERCLIP_HOSTNAME`, `PAPERCLIP_API_KEY`, `PAPERCLIP_DEFAULT_COMPANY_ID`, `HERMES_PROFILES`, `HERMES_DASHBOARD_ENABLED`, …) — **never** introduce per-brand branches or hard-coded brand specifics in `compose.yaml`.
+- Hermes is the default runtime surface. Paperclip is **off by default** and starts only when `PAPERCLIP_ENABLED=1`. When Paperclip is enabled, profile-sync follows that switch and starts after a board key is present.
 - Data volumes are per-Coolify-app (`<app_uuid>_paperclip-data`). Rebuilds preserve data; only `docker volume rm` destroys it.
 - When asked "add feature X for one company," gate it behind an env var; do **not** fork or branch the compose.
 
@@ -26,27 +26,31 @@ If you would be tempted to add a feature, env var, or compose section that only 
 ## Shape
 
 ```text
-paperclip.<client-domain> -> paperclip:3100
-Hermes dashboard is unrouted by default.
+hermes.<client-domain> -> hermes:9119   (when HERMES_DASHBOARD_ENABLED=1)
+Paperclip is disabled by default.
 
-Paperclip company → CEO agent → delegates to subordinate agents
-       │
-       ▼ each Paperclip agent uses adapterType: hermes_local
+Hermes profile list in HERMES_PROFILES
        │
        ▼
-hermes CLI runs locally inside the paperclip container
+bootstrap-profiles.sh creates/repairs each Hermes home
        │
        ▼
-       HERMES_HOME=/data/hermes/profiles/<company-role>   (per-agent profile)
+       HERMES_HOME=/data/hermes                 (default profile)
+       HERMES_HOME=/data/hermes/profiles/<slug> (named profiles)
+
+Optional later:
+Paperclip company → agent with adapterType: hermes_local
+       │
+       ▼ profile-sync maps agent to an existing/stable Hermes profile
 ```
 
-One image runs two services. Paperclip orchestrates and is the only default public UI. The Hermes service stays headless by default so profile bootstrap and gateway autostart can run without exposing a second browser UI. Both services share `/data`, so skills and the org chart are visible from either side.
+One image can run two services, but only `hermes` is active by default. The `paperclip` service is scaled to zero unless `PAPERCLIP_ENABLED=1`, so Hermes profiles, dashboard auth, Kanban, skills, and gateways can be proven before Paperclip orchestration is introduced. Both services share `/data` when Paperclip is enabled.
 
-The Paperclip MCP server (see below) closes the loop: Hermes-side agents can file and update Paperclip issues without leaving the conversation.
+The Paperclip MCP server (see below) is still bundled. It becomes useful once Paperclip is enabled and credentials are provided.
 
 ## Services
 
-- `paperclip` runs Paperclip on port `3100`.
+- `paperclip` runs Paperclip on port `3100` only when `PAPERCLIP_ENABLED=1`.
 - `hermes` bootstraps Hermes profiles and starts configured gateways. It only runs the dashboard on port `9119` when `HERMES_DASHBOARD_ENABLED=1`.
 - Both services share the `paperclip-data` volume at `/data`.
 
@@ -108,8 +112,8 @@ cp .env.example .env
 
 Then open:
 
-- Paperclip: `http://localhost:3100`
-- Hermes dashboard: disabled unless `HERMES_DASHBOARD_ENABLED=1`
+- Hermes dashboard: `http://localhost:9119` when `HERMES_DASHBOARD_ENABLED=1`
+- Paperclip: disabled unless `PAPERCLIP_ENABLED=1`
 
 Stop it with:
 
@@ -140,7 +144,7 @@ After the stack is deployed (locally or via Coolify) and the containers are runn
 
    **Lost admin access?** Same command. `--force` revokes any previous bootstrap invite and issues a new one even if an `instance_admin` already exists. The original admin row stays in the DB but you can sign in via the new invite and demote/remove it.
 
-2. **Create or claim a company.** Each company is its own Paperclip workspace. Set a goal, name a CEO. The default Hermes agent is seeded automatically when profile-sync is enabled — otherwise see "Seed Default Hermes Agent" below.
+2. **Create or claim a company.** Each company is its own Paperclip workspace. Set a goal, name a CEO. The default Hermes agent is seeded when Paperclip/profile-sync is enabled — otherwise see "Seed Default Hermes Agent" below.
 
 3. **Mint a board API key.**
 
@@ -267,13 +271,19 @@ gh workflow run build-image.yml --ref main -f force=true
 
 ### Coolify env variable checklist
 
-**Required for any deployment:**
+**Hermes-first default:**
+
+```env
+PAPERCLIP_ENABLED=0
+HERMES_DASHBOARD_ENABLED=1
+```
+
+**Required only when `PAPERCLIP_ENABLED=1`:**
 
 ```env
 PAPERCLIP_PUBLIC_URL=https://paperclip.<client-domain>
 PAPERCLIP_ALLOWED_HOSTNAMES=paperclip.<client-domain>,localhost,127.0.0.1
 PAPERCLIP_HOSTNAME=paperclip.<client-domain>
-HERMES_DASHBOARD_ENABLED=0
 ```
 
 Public routing is configured separately via the Coolify per-service domain map (step 6 of *Setting Up A New Coolify Stack*) — not via env vars. `PAPERCLIP_HOSTNAME` is only used by the compose's own Traefik labels for plain `docker compose` deployments, which Coolify doesn't substitute (see "Coolify routing notes"). Keeping it set on a Coolify deploy is harmless and documents intent.
@@ -285,9 +295,10 @@ PAPERCLIP_API_KEY=<pcp_board_...>
 PAPERCLIP_DEFAULT_COMPANY_ID=<uuid>   # optional, single-company convenience
 ```
 
-**Profile sync** — starts automatically when `PAPERCLIP_PROFILE_SYNC_API_KEY` is set. Generates the org chart and gives each Paperclip agent its own isolated Hermes profile. Set `PROFILE_SYNC_ENABLED=0` to explicitly disable (e.g. local dev without a full Paperclip setup).
+**Profile sync** — follows `PAPERCLIP_ENABLED`. When `PAPERCLIP_ENABLED=1` and `PAPERCLIP_PROFILE_SYNC_API_KEY` or `PAPERCLIP_API_KEY` is set, the Paperclip container starts profile-sync automatically. It generates the org chart and gives each Paperclip agent its own isolated Hermes profile.
 
 ```env
+PAPERCLIP_ENABLED=1
 PROFILE_SYNC_INTERVAL_SEC=60
 PROFILE_SYNC_DELETE_MODE=archive
 PROFILE_SYNC_GRANT_MANAGER_ASSIGN_TASKS=1
@@ -325,7 +336,7 @@ HERMES_GATEWAY_PROFILES=auto
 
 **Do NOT add blank LLM provider keys** (`OPENAI_API_KEY=`, `ANTHROPIC_API_KEY=`, `OPENROUTER_API_KEY=`) to Coolify. Hermes boots without them. Configure providers through Hermes CLI/config or temporarily enable the dashboard for admin setup, then turn it back off.
 
-For single-VM deployments, profile-sync env can live in `/data/agent-stack/profile-sync/profile-sync.env` (root-readable) instead of Coolify env. Override `ORG_MIRROR_ROOT` only if you need the org chart files somewhere other than `/data/agent-stack`.
+For single-VM deployments, Paperclip/profile-sync credentials can live in `/data/agent-stack/profile-sync/profile-sync.env` (root-readable) instead of Coolify env. Override `ORG_MIRROR_ROOT` only if you need the org chart files somewhere other than `/data/agent-stack`.
 
 ### Do not override `PAPERCLIP_ALLOWED_HOSTNAMES` in Coolify
 
@@ -411,7 +422,7 @@ Overlay errors (malformed YAML, missing `mcp_servers` key, non-dict `mcp_servers
 
 ### Bundled skill: `using-paperclip`
 
-The MCP server provides typed tools. The bundled `using-paperclip` Hermes skill provides *behaviour* — when and how agents should reach for those tools. It lives at `hermes-runtime/skills/using-paperclip/SKILL.md` and is symlinked into every Hermes profile's `skills/agent-stack/` directory by `bootstrap-profiles.sh`.
+The MCP server provides typed tools. The bundled `using-paperclip` Hermes skill provides *behaviour* — when and how agents should reach for those tools. It lives at `hermes-runtime/skills/using-paperclip/SKILL.md` and is symlinked into Hermes profiles only when `PAPERCLIP_ENABLED=1`.
 
 The skill teaches agents to:
 
@@ -520,10 +531,10 @@ that the routine exists.
 
 ## Profile Sync & Org Chart
 
-The `paperclip` container can run an embedded reconciliation loop that mirrors Paperclip's roster into per-role Hermes profiles and adapter skill-sync state. It is enabled in the generated Coolify env; set the API key after first-run auth:
+The `paperclip` container can run an embedded reconciliation loop that mirrors Paperclip's roster into per-role Hermes profiles and adapter skill-sync state. It follows `PAPERCLIP_ENABLED`; set the Paperclip switch and API key after first-run auth:
 
 ```env
-PROFILE_SYNC_ENABLED=1
+PAPERCLIP_ENABLED=1
 PROFILE_SYNC_INTERVAL_SEC=60
 PROFILE_SYNC_DELETE_MODE=archive
 PAPERCLIP_PROFILE_SYNC_API_KEY=<pcp_board_...>
@@ -544,6 +555,31 @@ The profile slug is stored on the Paperclip agent's metadata, so company or role
 
 New profile homes inherit the default profile's reusable setup:
 - `/data/hermes/*` is copied except runtime profile/archive/cache/log folders
+
+On every Hermes boot, `bootstrap-profiles.sh` also syncs skills into all known Hermes profiles without removing user-owned skills:
+- Upstream Hermes bundled skills from `/usr/local/lib/hermes-agent/skills`
+- Agent-stack skills from `hermes-runtime/skills/` under `skills/agent-stack/`
+
+Always-on agent-stack skill slugs:
+
+```text
+claude-code
+codex
+pipeline-workflow
+shopify-app
+shopify-theme
+use-100m-framework
+use-eos-framework
+```
+
+Paperclip-only agent-stack skill slugs, linked only when `PAPERCLIP_ENABLED=1`:
+
+```text
+paperclip-org-structure
+using-paperclip
+```
+
+The bootstrap only creates symlinks for missing skills or replaces existing symlinks. If a profile already has a real directory/file for the same skill name, it is left alone. When `PAPERCLIP_ENABLED=0`, stale managed symlinks for the Paperclip-only skills are removed, but real profile-owned skill directories/files are preserved.
 
 When an agent disappears from a successfully-scanned company:
 - `archive` mode (default): folders move under `/data/hermes/archive/`
