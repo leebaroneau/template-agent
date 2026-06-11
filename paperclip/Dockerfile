@@ -30,6 +30,7 @@ COPY paperclip/patch-hermes-adapter-skills-home.mjs /opt/paperclip/patch-hermes-
 COPY paperclip/patch-hermes-profile-skill-count.mjs /opt/paperclip/patch-hermes-profile-skill-count.mjs
 COPY paperclip/patch-paperclip-company-prefix.mjs /opt/paperclip/patch-paperclip-company-prefix.mjs
 COPY paperclip/patch-invite-auth-flow.mjs /opt/paperclip/patch-invite-auth-flow.mjs
+COPY paperclip/patch-hermes-update-message.mjs /opt/paperclip/patch-hermes-update-message.mjs
 COPY paperclip/repair-paperclip-config.mjs /opt/paperclip/repair-paperclip-config.mjs
 COPY paperclip/profile-sync.mjs /opt/paperclip/profile-sync.mjs
 COPY paperclip/seed-tool-access.mjs /opt/paperclip/seed-tool-access.mjs
