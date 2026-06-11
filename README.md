@@ -422,7 +422,7 @@ Overlay errors (malformed YAML, missing `mcp_servers` key, non-dict `mcp_servers
 
 ### Bundled skill: `using-paperclip`
 
-The MCP server provides typed tools. The bundled `using-paperclip` Hermes skill provides *behaviour* — when and how agents should reach for those tools. It lives at `hermes-runtime/skills/using-paperclip/SKILL.md` and is symlinked into every Hermes profile's `skills/agent-stack/` directory by `bootstrap-profiles.sh`.
+The MCP server provides typed tools. The bundled `using-paperclip` Hermes skill provides *behaviour* — when and how agents should reach for those tools. It lives at `hermes-runtime/skills/using-paperclip/SKILL.md` and is symlinked into Hermes profiles only when `PAPERCLIP_ENABLED=1`.
 
 The skill teaches agents to:
 
@@ -560,22 +560,27 @@ On every Hermes boot, `bootstrap-profiles.sh` also syncs skills into all known H
 - Upstream Hermes bundled skills from `/usr/local/lib/hermes-agent/skills`
 - Agent-stack skills from `hermes-runtime/skills/` under `skills/agent-stack/`
 
-Current agent-stack skill slugs are:
+Always-on agent-stack skill slugs:
 
 ```text
 claude-code
 codex
-paperclip-org-structure
 pipeline-workflow
 read-documents
 shopify-app
 shopify-theme
 use-100m-framework
 use-eos-framework
+```
+
+Paperclip-only agent-stack skill slugs, linked only when `PAPERCLIP_ENABLED=1`:
+
+```text
+paperclip-org-structure
 using-paperclip
 ```
 
-The bootstrap only creates symlinks for missing skills or replaces existing symlinks. If a profile already has a real directory/file for the same skill name, it is left alone.
+The bootstrap only creates symlinks for missing skills or replaces existing symlinks. If a profile already has a real directory/file for the same skill name, it is left alone. When `PAPERCLIP_ENABLED=0`, stale managed symlinks for the Paperclip-only skills are removed, but real profile-owned skill directories/files are preserved.
 
 When an agent disappears from a successfully-scanned company:
 - `archive` mode (default): folders move under `/data/hermes/archive/`

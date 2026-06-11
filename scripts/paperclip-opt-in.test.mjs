@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { access, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { promisify } from 'node:util';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const execFileAsync = promisify(execFile);
 
 async function file(path) {
   return readFile(join(repoRoot, path), 'utf8');
@@ -71,4 +75,69 @@ test('Hermes skill bootstrap adds bundled skills without wiping profile-owned sk
   assert.match(bootstrap, /if \[\[ -e "\$dest\/\$name" && ! -L "\$dest\/\$name" \]\]; then/);
   assert.doesNotMatch(bootstrap, /rm\s+-rf\s+"\$profile_home\/skills"/);
   assert.doesNotMatch(bootstrap, /rm\s+-rf\s+"\$runtime_profile_home\/skills"/);
+});
+
+test('Paperclip-only agent-stack skills follow PAPERCLIP_ENABLED', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'template-agent-skills-'));
+  const hermesHome = join(root, 'hermes');
+  const templateDir = join(root, 'templates');
+  const skillsSource = join(root, 'agent-stack-skills');
+
+  await mkdir(templateDir, { recursive: true });
+  await mkdir(skillsSource, { recursive: true });
+  await writeFile(join(templateDir, 'config.yaml'), '{}\n');
+  await writeFile(join(templateDir, 'SOUL.default.md'), '# Default\n');
+
+  for (const skill of ['codex', 'paperclip-org-structure', 'using-paperclip']) {
+    const dir = join(skillsSource, skill);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'SKILL.md'), `name: ${skill}\n`);
+  }
+
+  const runBootstrap = (paperclipEnabled) => execFileAsync(
+    'bash',
+    ['hermes-runtime/scripts/bootstrap-profiles.sh'],
+    {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        HERMES_DATA_ROOT: hermesHome,
+        HERMES_PROFILES: 'default',
+        TEMPLATE_DIR: templateDir,
+        HERMES_BUNDLED_SKILLS_SOURCE: join(root, 'missing-hermes-skills'),
+        AGENT_STACK_SKILLS_SOURCE: skillsSource,
+        PAPERCLIP_ENABLED: paperclipEnabled,
+      },
+    },
+  );
+
+  const skillPath = (skill) => join(hermesHome, 'skills', 'agent-stack', skill);
+  const exists = async (path) => {
+    try {
+      await access(path);
+      return true;
+    } catch (error) {
+      if (error.code === 'ENOENT') return false;
+      throw error;
+    }
+  };
+
+  try {
+    await runBootstrap('0');
+    assert.equal(await exists(skillPath('codex')), true);
+    assert.equal(await exists(skillPath('paperclip-org-structure')), false);
+    assert.equal(await exists(skillPath('using-paperclip')), false);
+
+    await runBootstrap('1');
+    assert.equal((await lstat(skillPath('codex'))).isSymbolicLink(), true);
+    assert.equal((await lstat(skillPath('paperclip-org-structure'))).isSymbolicLink(), true);
+    assert.equal((await lstat(skillPath('using-paperclip'))).isSymbolicLink(), true);
+
+    await runBootstrap('0');
+    assert.equal(await exists(skillPath('codex')), true);
+    assert.equal(await exists(skillPath('paperclip-org-structure')), false);
+    assert.equal(await exists(skillPath('using-paperclip')), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
