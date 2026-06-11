@@ -82,13 +82,23 @@ test('Paperclip-only agent-stack skills follow PAPERCLIP_ENABLED', async () => {
   const hermesHome = join(root, 'hermes');
   const templateDir = join(root, 'templates');
   const skillsSource = join(root, 'agent-stack-skills');
+  const alwaysOnSkills = [
+    'claude-code',
+    'codex',
+    'pipeline-workflow',
+    'shopify-app',
+    'shopify-theme',
+    'use-100m-framework',
+    'use-eos-framework',
+  ];
+  const paperclipOnlySkills = ['paperclip-org-structure', 'using-paperclip'];
 
   await mkdir(templateDir, { recursive: true });
   await mkdir(skillsSource, { recursive: true });
   await writeFile(join(templateDir, 'config.yaml'), '{}\n');
   await writeFile(join(templateDir, 'SOUL.default.md'), '# Default\n');
 
-  for (const skill of ['codex', 'paperclip-org-structure', 'using-paperclip']) {
+  for (const skill of [...alwaysOnSkills, ...paperclipOnlySkills]) {
     const dir = join(skillsSource, skill);
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, 'SKILL.md'), `name: ${skill}\n`);
@@ -124,19 +134,25 @@ test('Paperclip-only agent-stack skills follow PAPERCLIP_ENABLED', async () => {
 
   try {
     await runBootstrap('0');
-    assert.equal(await exists(skillPath('codex')), true);
-    assert.equal(await exists(skillPath('paperclip-org-structure')), false);
-    assert.equal(await exists(skillPath('using-paperclip')), false);
+    for (const skill of alwaysOnSkills) {
+      assert.equal(await exists(skillPath(skill)), true);
+    }
+    for (const skill of paperclipOnlySkills) {
+      assert.equal(await exists(skillPath(skill)), false);
+    }
 
     await runBootstrap('1');
-    assert.equal((await lstat(skillPath('codex'))).isSymbolicLink(), true);
-    assert.equal((await lstat(skillPath('paperclip-org-structure'))).isSymbolicLink(), true);
-    assert.equal((await lstat(skillPath('using-paperclip'))).isSymbolicLink(), true);
+    for (const skill of [...alwaysOnSkills, ...paperclipOnlySkills]) {
+      assert.equal((await lstat(skillPath(skill))).isSymbolicLink(), true);
+    }
 
     await runBootstrap('0');
-    assert.equal(await exists(skillPath('codex')), true);
-    assert.equal(await exists(skillPath('paperclip-org-structure')), false);
-    assert.equal(await exists(skillPath('using-paperclip')), false);
+    for (const skill of alwaysOnSkills) {
+      assert.equal(await exists(skillPath(skill)), true);
+    }
+    for (const skill of paperclipOnlySkills) {
+      assert.equal(await exists(skillPath(skill)), false);
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -566,7 +566,6 @@ Always-on agent-stack skill slugs:
 claude-code
 codex
 pipeline-workflow
-read-documents
 shopify-app
 shopify-theme
 use-100m-framework
