@@ -88,7 +88,6 @@ node /opt/paperclip/patch-hermes-adapter-env.mjs
 node /opt/paperclip/patch-hermes-adapter-skills-home.mjs
 node /opt/paperclip/patch-paperclip-company-prefix.mjs
 node /opt/paperclip/patch-invite-auth-flow.mjs || echo "[entrypoint] patch-invite-auth-flow skipped (non-fatal)"
-node /opt/paperclip/patch-hermes-update-message.mjs || echo "[entrypoint] patch-hermes-update-message skipped (non-fatal)"
 node /opt/paperclip/repair-paperclip-config.mjs
 
 if [[ ! -f /data/instances/default/config.json ]]; then
