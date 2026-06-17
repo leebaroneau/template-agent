@@ -22,9 +22,25 @@ ensure_env_file() {
 strip_provider_keys() {
   local env_file="$1"
   [[ -f "$env_file" ]] || return 0
-  sed -i '/^ANTHROPIC_API_KEY=/d;/^OPENAI_API_KEY=/d;/^OPENROUTER_API_KEY=/d' "$env_file"
+  local tmp_file="${env_file}.tmp.$$"
+  grep -vE '^(ANTHROPIC_API_KEY|OPENAI_API_KEY|OPENROUTER_API_KEY)=' "$env_file" > "$tmp_file" || true
+  cat "$tmp_file" > "$env_file"
+  rm -f "$tmp_file"
 }
 
+paperclip_enabled() {
+  case "${PAPERCLIP_ENABLED:-0}" in
+    1|true|TRUE|True|yes|YES|Yes|on|ON|On) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+is_paperclip_agent_stack_skill() {
+  case "$1" in
+    paperclip-org-structure|using-paperclip) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 install_hermes_bundled_skills() {
   local profile_home="$1"
@@ -76,6 +92,10 @@ install_agent_stack_skills() {
     [[ -d "$skill_dir" && -f "$skill_dir/SKILL.md" ]] || continue
     local name
     name="$(basename "$skill_dir")"
+    if is_paperclip_agent_stack_skill "$name" && ! paperclip_enabled; then
+      [[ -L "$dest/$name" ]] && rm -f "$dest/$name"
+      continue
+    fi
     if [[ -e "$dest/$name" && ! -L "$dest/$name" ]]; then
       continue
     fi

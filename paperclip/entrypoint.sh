@@ -31,6 +31,14 @@ fi
 
 export ORG_MIRROR_ROOT="${ORG_MIRROR_ROOT:-/data/agent-stack}"
 
+case "${PAPERCLIP_ENABLED:-0}" in
+  1|true|TRUE|True|yes|YES|Yes|on|ON|On) ;;
+  *)
+    echo "[agent-stack] Paperclip disabled (PAPERCLIP_ENABLED=0); leaving Paperclip service idle."
+    exec sleep infinity
+    ;;
+esac
+
 # Install per-brand state-repo SSH deploy key on container start so the
 # pre-deployment backup hook (paperclip/pre-deploy-backup.sh) can push to
 # the state repo. Coolify supplies the key as base64 via AGENT_STATE_DEPLOY_KEY
@@ -95,12 +103,10 @@ if [[ ! -f /data/instances/default/config.json ]]; then
   runuser -u node -- paperclipai onboard --data-dir /data --bind "${PAPERCLIP_BIND:-lan}" --yes
 fi
 
-# Profile-sync is key-gated: starts automatically when PAPERCLIP_PROFILE_SYNC_API_KEY
-# is present. Set PROFILE_SYNC_ENABLED=0 to explicitly disable it (e.g. local dev).
+# Profile-sync follows PAPERCLIP_ENABLED. A key alone is not enough because the
+# whole Paperclip service is idle unless explicitly enabled.
 _sync_key="${PAPERCLIP_PROFILE_SYNC_API_KEY:-${PAPERCLIP_API_KEY:-}}"
-if [[ "${PROFILE_SYNC_ENABLED:-auto}" =~ ^(0|false|FALSE|no|NO|off|OFF)$ ]]; then
-  echo "[agent-stack] Profile-sync disabled (PROFILE_SYNC_ENABLED=0)."
-elif [[ -n "$_sync_key" ]]; then
+if [[ -n "$_sync_key" ]]; then
   echo "[agent-stack] Starting embedded profile-sync loop"
   runuser -u node -- env \
     PROFILE_SYNC_ENABLED=1 \
