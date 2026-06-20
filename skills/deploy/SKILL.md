@@ -9,7 +9,7 @@ This service auto-deploys via Coolify webhook when commits land on `main`.
 
 ## Standard release
 
-1. Confirm CI green on the merge commit.
+1. Confirm `./scripts/doctor` passed on the merge commit and the deployment workflow, if any, is green.
 2. Merge to `main` — Coolify webhook fires; do NOT also trigger a manual deploy (queues a duplicate).
 3. Watch the Coolify deploy log until the new container is healthy.
 4. Hit `/healthz` against `<FQDN>` — expect `200`.
