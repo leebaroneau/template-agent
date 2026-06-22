@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -423,6 +423,75 @@ test('ensureProfileHomes copies default Hermes env into new profiles', async () 
 
     assert.equal(await readFile(join(result.hermesHome, '.env'), 'utf8'), 'OPENAI_API_KEY=real-key\n');
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('ensureProfileHomes merges template defaults into existing Paperclip runtime configs', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-runtime-config-'));
+  try {
+    const hermesRoot = join(root, 'hermes');
+    const runtimeHome = join(root, 'instances/default/runtimes/hermes/profiles/acme-researcher');
+    await mkdir(runtimeHome, { recursive: true });
+    await writeFile(
+      join(runtimeHome, 'config.yaml'),
+      [
+        'model:',
+        '  provider: "anthropic"',
+        '  default: "claude-sonnet-4-6"',
+        '',
+        'dashboard:',
+        '  show_token_analytics: true',
+        '',
+      ].join('\n'),
+    );
+
+    const result = await ensureProfileHomes({
+      profileSlug: 'acme-researcher',
+      hermesHome: runtimeHome,
+      hermesDataRoot: hermesRoot,
+      templateDir: join(process.cwd(), 'hermes-runtime/templates'),
+    });
+
+    const config = await readFile(join(result.hermesHome, 'config.yaml'), 'utf8');
+    assert.match(config, /^model:\n  provider: "anthropic"\n  default: "claude-sonnet-4-6"/m);
+    assert.match(config, /^dashboard:\n  show_token_analytics: true/m);
+    assert.match(config, /^mcp_servers:\n  paperclip:/m);
+    assert.match(config, /^toolsets:\n  - hermes-telegram/m);
+    assert.match(config, /^memory:\n(?:  .+\n)*  provider: holographic/m);
+    assert.match(config, /^prompt_caching:\n  enabled: true/m);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('ensureProfileHomes prunes dangling skill symlinks from runtime profiles', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'profile-sync-runtime-skills-'));
+  const previousSource = process.env.HERMES_BUNDLED_SKILLS_SOURCE;
+  try {
+    const hermesRoot = join(root, 'hermes');
+    const runtimeHome = join(root, 'instances/default/runtimes/hermes/profiles/acme-researcher');
+    const bundledSource = join(root, 'bundled-skills');
+    await mkdir(join(runtimeHome, 'skills'), { recursive: true });
+    await mkdir(join(bundledSource, 'current-skill'), { recursive: true });
+    await symlink('/opt/hermes-runtime/skills/removed-skill', join(runtimeHome, 'skills', 'removed-skill'));
+    process.env.HERMES_BUNDLED_SKILLS_SOURCE = bundledSource;
+
+    await ensureProfileHomes({
+      profileSlug: 'acme-researcher',
+      hermesHome: runtimeHome,
+      hermesDataRoot: hermesRoot,
+      templateDir: join(process.cwd(), 'hermes-runtime/templates'),
+    });
+
+    await assert.rejects(lstat(join(runtimeHome, 'skills', 'removed-skill')), { code: 'ENOENT' });
+    assert.ok((await lstat(join(runtimeHome, 'skills', 'current-skill'))).isSymbolicLink());
+  } finally {
+    if (previousSource === undefined) {
+      delete process.env.HERMES_BUNDLED_SKILLS_SOURCE;
+    } else {
+      process.env.HERMES_BUNDLED_SKILLS_SOURCE = previousSource;
+    }
     await rm(root, { recursive: true, force: true });
   }
 });
