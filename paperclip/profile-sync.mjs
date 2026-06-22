@@ -90,6 +90,16 @@ const HERMES_TEMPLATE_SKIP_FILES = new Set([
   'state.db',
 ]);
 const HERMES_SQLITE_SIDECARE_RE = /^(?:state|kanban)\.db-(?:journal|shm|wal)$/;
+const HERMES_TEMPLATE_CONFIG_BLOCKS = Object.freeze([
+  'mcp_servers',
+  'memory',
+  'plugins',
+  'context',
+  'compression',
+  'prompt_caching',
+  'security',
+  'stt',
+]);
 
 // Canonical list of Hermes well-known subdirs, mirroring upstream
 // hermes_cli/config.py:ensure_hermes_home(). Pre-creating these with stable
@@ -437,6 +447,7 @@ export async function ensureProfileHomes({
 
   // Always (re)install bundled Hermes skills so existing broken profiles self-heal.
   await installBundledHermesSkills(hermesHome);
+  await pruneDanglingSkillSymlinks(hermesHome);
 
   await copyFirstExistingIfMissing(
     [
@@ -445,6 +456,10 @@ export async function ensureProfileHomes({
       join(templateDir, 'config.yaml'),
     ],
     join(hermesHome, 'config.yaml'),
+  );
+  await syncProfileConfigFromTemplate(
+    join(hermesHome, 'config.yaml'),
+    join(templateDir, 'config.yaml'),
   );
 
   await copyFirstExistingIfMissing(
@@ -1136,6 +1151,92 @@ async function copyFirstExistingIfMissing(paths, destination) {
   await cp(source, destination, { force: false });
 }
 
+async function syncProfileConfigFromTemplate(profileConfigPath, templateConfigPath) {
+  if (!(await exists(profileConfigPath)) || !(await exists(templateConfigPath))) return;
+
+  const profileConfig = await readFile(profileConfigPath, 'utf8');
+  const templateConfig = await readFile(templateConfigPath, 'utf8');
+  let merged = profileConfig;
+  for (const key of HERMES_TEMPLATE_CONFIG_BLOCKS) {
+    merged = mergeTopLevelBlockFromTemplate(merged, templateConfig, key);
+  }
+  merged = mergeTopLevelListFromTemplate(merged, templateConfig, 'toolsets');
+  if (merged !== profileConfig) {
+    await writeFile(profileConfigPath, merged);
+  }
+}
+
+function mergeTopLevelBlockFromTemplate(profileConfig, templateConfig, key) {
+  const profileLines = profileConfig.split('\n');
+  if (topLevelBlockBounds(profileLines, key)) return profileConfig;
+
+  const templateLines = templateConfig.split('\n');
+  const bounds = topLevelBlockBounds(templateLines, key);
+  if (!bounds) return profileConfig;
+
+  const block = templateLines.slice(bounds.start, bounds.end).join('\n').replace(/\s*$/, '');
+  if (!block) return profileConfig;
+
+  const trimmed = profileConfig.replace(/\s*$/, '');
+  return `${trimmed}\n\n${block}\n`;
+}
+
+function mergeTopLevelListFromTemplate(profileConfig, templateConfig, key) {
+  const templateItems = readTopLevelList(templateConfig, key);
+  if (templateItems.length === 0) return profileConfig;
+
+  const profileItems = readTopLevelList(profileConfig, key);
+  const existing = new Set(profileItems);
+  const missing = templateItems.filter((item) => !existing.has(item));
+  if (missing.length === 0) return profileConfig;
+
+  const lines = profileConfig.split('\n');
+  const bounds = topLevelBlockBounds(lines, key);
+  const newLines = missing.map((item) => `  - ${item}`);
+
+  if (!bounds) {
+    const trimmed = profileConfig.replace(/\s*$/, '');
+    return `${trimmed}\n\n${key}:\n${newLines.join('\n')}\n`;
+  }
+
+  let insertAt = bounds.start + 1;
+  for (let i = bounds.start + 1; i < bounds.end; i += 1) {
+    if (/^\s*-\s+/.test(lines[i])) insertAt = i + 1;
+  }
+  lines.splice(insertAt, 0, ...newLines);
+  return lines.join('\n');
+}
+
+function readTopLevelList(content, key) {
+  const lines = content.split('\n');
+  const bounds = topLevelBlockBounds(lines, key);
+  if (!bounds) return [];
+
+  return lines
+    .slice(bounds.start + 1, bounds.end)
+    .map((line) => line.match(/^\s*-\s*(.+?)\s*(?:#.*)?$/)?.[1]?.trim() || '')
+    .filter(Boolean)
+    .map((item) => item.replace(/^['"]|['"]$/g, ''));
+}
+
+function topLevelBlockBounds(lines, key) {
+  const keyRe = new RegExp(`^${escapeRegExp(key)}:\\s*(?:#.*)?$`);
+  const start = lines.findIndex((line) => keyRe.test(line));
+  if (start === -1) return null;
+
+  let end = start + 1;
+  while (end < lines.length) {
+    const line = lines[end];
+    if (line.trim() && /^\S[^:]*:\s*/.test(line)) break;
+    end += 1;
+  }
+  return { start, end };
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 async function cloneDefaultHermesProfile({ hermesDataRoot, hermesHome }) {
   if (!(await exists(hermesDataRoot))) return;
 
@@ -1175,6 +1276,34 @@ async function installBundledHermesSkills(hermesHome) {
     }
     try { await rm(linkPath); } catch (e) { if (e.code !== 'ENOENT') throw e; }
     await symlink(join(src, entry.name), linkPath);
+  }
+}
+
+async function pruneDanglingSkillSymlinks(hermesHome) {
+  await pruneDanglingSymlinksUnder(join(hermesHome, 'skills'));
+}
+
+async function pruneDanglingSymlinksUnder(dir) {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === 'ENOENT') return;
+    throw error;
+  }
+
+  for (const entry of entries) {
+    const entryPath = join(dir, entry.name);
+    const st = await lstat(entryPath);
+    if (st.isSymbolicLink()) {
+      if (!(await exists(entryPath))) {
+        await rm(entryPath);
+      }
+      continue;
+    }
+    if (st.isDirectory()) {
+      await pruneDanglingSymlinksUnder(entryPath);
+    }
   }
 }
 
