@@ -28,6 +28,7 @@ COPY paperclip/pre-deploy-backup.sh /opt/paperclip/pre-deploy-backup.sh
 COPY paperclip/patch-hermes-adapter-env.mjs /opt/paperclip/patch-hermes-adapter-env.mjs
 COPY paperclip/patch-hermes-adapter-skills-home.mjs /opt/paperclip/patch-hermes-adapter-skills-home.mjs
 COPY paperclip/patch-hermes-profile-skill-count.mjs /opt/paperclip/patch-hermes-profile-skill-count.mjs
+COPY paperclip/patch-hermes-tui-lazy-inventory.mjs /opt/paperclip/patch-hermes-tui-lazy-inventory.mjs
 COPY paperclip/patch-paperclip-company-prefix.mjs /opt/paperclip/patch-paperclip-company-prefix.mjs
 COPY paperclip/patch-invite-auth-flow.mjs /opt/paperclip/patch-invite-auth-flow.mjs
 COPY paperclip/patch-hermes-update-message.mjs /opt/paperclip/patch-hermes-update-message.mjs
