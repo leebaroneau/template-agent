@@ -1,175 +1,175 @@
 #!/usr/bin/env bash
 # Nightly state backup for a brand's dual Paperclip+Hermes Coolify deployment.
 #
-# This runs on the DROPLET HOST (not inside the container) via cron. It
-# `docker exec`s into the running paperclip + hermes containers to dump the
-# Paperclip DB and tar the Hermes profiles, then commits
-# and pushes to the brand's `agent-<brand>` state repo on GitHub via SSH
-# deploy key.
-#
-# Brand-agnostic — all per-brand values come from the env file sourced
-# below. Each brand's droplet gets its own copy at
-# /root/agent-state-backup/nightly-backup.sh (or wherever you prefer) and
-# its own env file with the brand's deploy key path, container filter,
-# and state repo URL.
+# Runs on the DROPLET HOST via cron. It docker-execs into the running
+# paperclip + hermes containers to dump the Paperclip DB and tar Hermes
+# profiles, then uploads the snapshot as GitHub Release assets on the brand's
+# agent-<brand> state repo.
 #
 # Install:
-#   1. Copy this file onto the droplet host: scp scripts/host/nightly-backup.sh
-#      root@<droplet>:/root/agent-state-backup/nightly-backup.sh
-#   2. Generate a per-brand SSH deploy key, add as a write-enabled deploy key
-#      on the state repo:
-#        ssh-keygen -t ed25519 -C "agent-<brand>-state-backup" \
-#          -f ~/.ssh/agent-<brand>-deploy -N ''
-#        gh api -X POST repos/<Org>/agent-<brand>/keys \
-#          -f title="<droplet> nightly backup" \
-#          -f key="$(cat ~/.ssh/agent-<brand>-deploy.pub)" -F read_only=false
-#   3. Create the env file `/root/agent-state-backup/backup.env` with:
+#   1. Copy this file and the shared helper onto the droplet host:
+#        scp scripts/host/nightly-backup.sh <host>:/root/agent-state-backup/nightly-backup.sh
+#        scp paperclip/lib/release-backup.sh <host>:/root/agent-state-backup/release-backup.sh
+#   2. Create `/root/agent-state-backup/backup.env`:
 #        AGENT_STATE_REPO=<Org>/agent-<brand>
 #        AGENT_STATE_BRAND=<brand>
-#        AGENT_STATE_KEY=/root/.ssh/agent-<brand>-deploy
-#        # If deploy keys are disabled, use instead:
-#        # AGENT_STATE_TOKEN_FILE=/root/agent-state-backup/github-token
+#        AGENT_STATE_TOKEN_FILE=/root/agent-state-backup/github-token
 #        AGENT_STATE_COMPOSE_FILTER=<coolify-app-uuid>
-#        (optional) AGENT_STATE_RETENTION_DAYS=30
-#   4. Configure SSH alias `github-agent-state` for the deploy key:
-#        cat >> ~/.ssh/config <<EOF
-#        Host github-agent-state
-#          HostName github.com
-#          User git
-#          IdentityFile /root/.ssh/agent-<brand>-deploy
-#          IdentitiesOnly yes
-#          StrictHostKeyChecking accept-new
-#        EOF
-#   5. Clone the state repo once:
-#        git clone github-agent-state:<Org>/agent-<brand>.git /root/agent-state-backup/repo
-#   6. Install cron (suggest 0 17 * * * UTC = 03:00 Sydney):
+#        AGENT_STATE_RETENTION_DAYS=30
+#   3. Store a GitHub token with contents:write at AGENT_STATE_TOKEN_FILE.
+#      GitHub Release assets cannot be uploaded with an SSH deploy key.
+#   4. Install cron (suggest 0 17 * * * UTC = 03:00 Sydney):
 #        (crontab -l; echo "0 17 * * * /root/agent-state-backup/nightly-backup.sh \
 #          >> /var/log/agent-state-backup.log 2>&1") | crontab -
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"; }
 
-file_size_bytes() {
-  stat -c%s "$1" 2>/dev/null || stat -f%z "$1"
+load_release_helper() {
+  local helper="${AGENT_STATE_RELEASE_BACKUP_LIB:-}"
+  if [[ -z "$helper" ]]; then
+    if [[ -f "$SCRIPT_DIR/release-backup.sh" ]]; then
+      helper="$SCRIPT_DIR/release-backup.sh"
+    else
+      helper="$SCRIPT_DIR/../../paperclip/lib/release-backup.sh"
+    fi
+  fi
+
+  if [[ ! -f "$helper" ]]; then
+    log "ERROR: release backup helper not found. Copy paperclip/lib/release-backup.sh next to nightly-backup.sh or set AGENT_STATE_RELEASE_BACKUP_LIB."
+    return 1
+  fi
+
+  # shellcheck source=paperclip/lib/release-backup.sh
+  source "$helper"
 }
 
-stage_snapshot_file() {
-  local source_file="$1"
-  local snapshot_dir="$2"
-  local snapshot_name="$3"
-  local split_bytes="${AGENT_STATE_ARCHIVE_SPLIT_BYTES:-95000000}"
+load_env() {
+  ENV_FILE="${AGENT_STATE_ENV_FILE:-/root/agent-state-backup/backup.env}"
+  LOG_FILE="${AGENT_STATE_LOG_FILE:-/var/log/agent-state-backup.log}"
 
-  if [[ ! -f "$source_file" ]]; then
-    log "  skipping $snapshot_name; source file missing"
-    return 0
+  if [[ -f "$ENV_FILE" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
   fi
 
-  rm -f "$snapshot_dir/$snapshot_name" "$snapshot_dir/$snapshot_name.part-"*
-
-  local size
-  size="$(file_size_bytes "$source_file")"
-  if (( size > split_bytes )); then
-    log "  splitting $snapshot_name ($size bytes) into ${split_bytes}-byte parts"
-    split -b "$split_bytes" -d -a 4 "$source_file" "$snapshot_dir/$snapshot_name.part-"
-    return 0
+  if [[ -z "${AGENT_STATE_TOKEN:-}" && -n "${AGENT_STATE_TOKEN_FILE:-}" && -f "$AGENT_STATE_TOKEN_FILE" ]]; then
+    AGENT_STATE_TOKEN="$(tr -d '\r\n' < "$AGENT_STATE_TOKEN_FILE")"
   fi
+}
 
-  mv "$source_file" "$snapshot_dir/$snapshot_name"
-  log "  saved $snapshot_name ($size bytes)"
+validate_config() {
+  : "${AGENT_STATE_REPO:?AGENT_STATE_REPO must be set (e.g. <Org>/agent-<brand>)}"
+  : "${AGENT_STATE_BRAND:?AGENT_STATE_BRAND must be set (e.g. <brand>)}"
+  : "${AGENT_STATE_COMPOSE_FILTER:?AGENT_STATE_COMPOSE_FILTER must be set (Coolify app UUID prefix)}"
+
+  release_backup_require_token "$AGENT_STATE_REPO"
+  release_backup_validate_repo "$AGENT_STATE_REPO"
+}
+
+snapshot_timestamp() {
+  printf '%s' "${AGENT_STATE_BACKUP_TIMESTAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
+}
+
+snapshot_created_at() {
+  printf '%s' "${AGENT_STATE_BACKUP_CREATED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+}
+
+source_commit() {
+  printf '%s' "${AGENT_STATE_SOURCE_COMMIT:-${SOURCE_COMMIT:-unknown}}"
+}
+
+resolve_containers() {
+  PAPERCLIP_CONTAINER="$(docker ps --filter "name=paperclip-${AGENT_STATE_COMPOSE_FILTER}" --format '{{.Names}}' | head -1)"
+  HERMES_CONTAINER="$(docker ps --filter "name=hermes-${AGENT_STATE_COMPOSE_FILTER}" --format '{{.Names}}' | head -1)"
+
+  if [[ -z "$PAPERCLIP_CONTAINER" || -z "$HERMES_CONTAINER" ]]; then
+    log "ERROR: containers not running (paperclip=$PAPERCLIP_CONTAINER, hermes=$HERMES_CONTAINER); aborting"
+    return 1
+  fi
+}
+
+dump_paperclip_db() {
+  local tmp_dir="$1"
+  local latest_db
+
+  log "Dumping Paperclip DB via $PAPERCLIP_CONTAINER"
+  docker exec "$PAPERCLIP_CONTAINER" bash -lc 'paperclipai db:backup --dir /tmp >/dev/null 2>&1'
+  latest_db="$(docker exec "$PAPERCLIP_CONTAINER" bash -lc 'ls -1t /tmp/paperclip-*.sql.gz | head -1')"
+  docker cp "$PAPERCLIP_CONTAINER:$latest_db" "$tmp_dir/paperclip-db.sql.gz"
+}
+
+build_hermes_archive() {
+  local tmp_dir="$1"
+
+  log "Taring Hermes profiles via $HERMES_CONTAINER"
+  docker exec "$HERMES_CONTAINER" bash -lc 'cd /data && tar czf /tmp/hermes-profiles.tar.gz --exclude="hermes/profiles/*/profile-backups" --exclude="hermes/profiles/*/python-packages" --exclude="hermes/profiles/*/bin" --exclude="hermes/profiles/*/lsp" --exclude="hermes/profiles/*/cache" --exclude="hermes/profiles/*/audio_cache" --exclude="*/__pycache__" hermes/profiles hermes/SOUL.md hermes/auth.json hermes/.env hermes/cron hermes/hooks 2>/dev/null'
+  docker cp "$HERMES_CONTAINER:/tmp/hermes-profiles.tar.gz" "$tmp_dir/hermes-profiles.tar.gz"
+}
+
+upload_and_verify_asset() {
+  local release_id="$1"
+  local file="$2"
+  local name="$3"
+
+  log "Uploading $name"
+  release_backup_upload_asset "$AGENT_STATE_REPO" "$AGENT_STATE_TOKEN" "$release_id" "$file" "$name"
+  release_backup_verify_asset "$AGENT_STATE_REPO" "$AGENT_STATE_TOKEN" "$release_id" "$name" "$file"
 }
 
 main() {
+  load_env
+  load_release_helper
+  validate_config
 
-# ── Config ─────────────────────────────────────────────────────────────
-ENV_FILE="${AGENT_STATE_ENV_FILE:-/root/agent-state-backup/backup.env}"
-REPO_DIR="${AGENT_STATE_REPO_DIR:-/root/agent-state-backup/repo}"
-LOG_FILE="${AGENT_STATE_LOG_FILE:-/var/log/agent-state-backup.log}"
+  local retention_days="${AGENT_STATE_RETENTION_DAYS:-30}"
+  local timestamp created_at tag release_id release_name release_body
+  timestamp="$(snapshot_timestamp)"
+  created_at="$(snapshot_created_at)"
+  tag="nightly-$timestamp"
+  release_name="Nightly snapshot $timestamp"
+  release_body="kind=nightly
+brand=$AGENT_STATE_BRAND
+repository=$AGENT_STATE_REPO
+created_at=$created_at
+source_commit=$(source_commit)"
 
-if [[ -f "$ENV_FILE" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-  set +a
-fi
+  TMP_DIR="$(mktemp -d -t agent-state-nightly-XXXXXX)"
+  trap 'rm -rf "$TMP_DIR"' EXIT
 
-if [[ -z "${AGENT_STATE_TOKEN:-}" && -n "${AGENT_STATE_TOKEN_FILE:-}" && -f "$AGENT_STATE_TOKEN_FILE" ]]; then
-  AGENT_STATE_TOKEN="$(cat "$AGENT_STATE_TOKEN_FILE")"
-fi
+  log "=== Starting release backup for brand=$AGENT_STATE_BRAND release=$tag ==="
 
-: "${AGENT_STATE_REPO:?AGENT_STATE_REPO must be set (e.g. <Org>/agent-<brand>)}"
-: "${AGENT_STATE_BRAND:?AGENT_STATE_BRAND must be set (e.g. <brand>)}"
-: "${AGENT_STATE_COMPOSE_FILTER:?AGENT_STATE_COMPOSE_FILTER must be set (Coolify app UUID prefix; e.g. g1177fqvz8uyq3irqj3hl5b8)}"
+  resolve_containers
+  dump_paperclip_db "$TMP_DIR"
+  build_hermes_archive "$TMP_DIR"
 
-RETENTION_DAYS="${AGENT_STATE_RETENTION_DAYS:-30}"
-DATE="$(date -u +%Y-%m-%d)"
-SNAPSHOT_DIR="$REPO_DIR/$DATE"
-TMP_DIR="$(mktemp -d -t agent-state-nightly-XXXXXX)"
-trap 'rm -rf "$TMP_DIR" "${GIT_ASKPASS_FILE:-}"' EXIT
+  release_id="$(release_backup_create_or_reuse_release "$AGENT_STATE_REPO" "$AGENT_STATE_TOKEN" "$tag" "$release_name" "$release_body")"
+  upload_and_verify_asset "$release_id" "$TMP_DIR/paperclip-db.sql.gz" "paperclip-db.sql.gz"
+  upload_and_verify_asset "$release_id" "$TMP_DIR/hermes-profiles.tar.gz" "hermes-profiles.tar.gz"
 
-log "=== Starting backup for brand=$AGENT_STATE_BRAND date=$DATE ==="
+  release_backup_write_manifest \
+    "$TMP_DIR/manifest.json" \
+    "nightly" \
+    "$tag" \
+    "$created_at" \
+    "$AGENT_STATE_BRAND" \
+    "$AGENT_STATE_REPO" \
+    "host-nightly" \
+    "$(source_commit)" \
+    "$TMP_DIR/paperclip-db.sql.gz" \
+    "$TMP_DIR/hermes-profiles.tar.gz"
 
-git_auth_env=()
-if [[ -n "${AGENT_STATE_TOKEN:-}" ]]; then
-  GIT_ASKPASS_FILE="$(mktemp -t agent-state-askpass-XXXXXX)"
-  cat > "$GIT_ASKPASS_FILE" <<'ASKPASS'
-#!/usr/bin/env bash
-case "$1" in
-  Username*) printf '%s\n' 'x-access-token' ;;
-  Password*) printf '%s\n' "$AGENT_STATE_TOKEN" ;;
-esac
-ASKPASS
-  chmod 700 "$GIT_ASKPASS_FILE"
-  git_auth_env=(env GIT_TERMINAL_PROMPT=0 "GIT_ASKPASS=$GIT_ASKPASS_FILE" "AGENT_STATE_TOKEN=$AGENT_STATE_TOKEN")
-elif [[ -n "${AGENT_STATE_KEY:-}" ]]; then
-  git_auth_env=(env "GIT_SSH_COMMAND=ssh -i $AGENT_STATE_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new")
-fi
+  upload_and_verify_asset "$release_id" "$TMP_DIR/manifest.json" "manifest.json"
 
-# ── Resolve container names dynamically (Coolify renames on each deploy) ───
-PAPERCLIP_CONTAINER="$(docker ps --filter "name=paperclip-${AGENT_STATE_COMPOSE_FILTER}" --format '{{.Names}}' | head -1)"
-HERMES_CONTAINER="$(docker ps --filter "name=hermes-${AGENT_STATE_COMPOSE_FILTER}" --format '{{.Names}}' | head -1)"
+  log "Pruning nightly releases older than $retention_days days"
+  release_backup_prune_releases "$AGENT_STATE_REPO" "$AGENT_STATE_TOKEN" "nightly" "$retention_days"
 
-if [[ -z "$PAPERCLIP_CONTAINER" || -z "$HERMES_CONTAINER" ]]; then
-  log "ERROR: containers not running (paperclip=$PAPERCLIP_CONTAINER, hermes=$HERMES_CONTAINER); aborting"
-  exit 1
-fi
-
-mkdir -p "$SNAPSHOT_DIR"
-
-# ── 1. Paperclip DB dump ───────────────────────────────────────────────
-log "Dumping Paperclip DB via $PAPERCLIP_CONTAINER"
-docker exec "$PAPERCLIP_CONTAINER" bash -lc 'paperclipai db:backup --dir /tmp >/dev/null 2>&1'
-LATEST_DB="$(docker exec "$PAPERCLIP_CONTAINER" bash -lc 'ls -1t /tmp/paperclip-*.sql.gz | head -1')"
-docker cp "$PAPERCLIP_CONTAINER:$LATEST_DB" "$TMP_DIR/paperclip-db.sql.gz"
-stage_snapshot_file "$TMP_DIR/paperclip-db.sql.gz" "$SNAPSHOT_DIR" "paperclip-db.sql.gz"
-
-# ── 2. Hermes profiles ──────────────────────────────────────────────────
-log "Taring Hermes profiles via $HERMES_CONTAINER"
-docker exec "$HERMES_CONTAINER" bash -lc 'cd /data && tar czf /tmp/hermes-profiles.tar.gz --exclude="hermes/profiles/*/profile-backups" --exclude="hermes/profiles/*/python-packages" --exclude="hermes/profiles/*/bin" --exclude="hermes/profiles/*/lsp" --exclude="hermes/profiles/*/cache" --exclude="hermes/profiles/*/audio_cache" --exclude="*/__pycache__" hermes/profiles hermes/SOUL.md hermes/auth.json hermes/.env hermes/cron hermes/hooks 2>/dev/null'
-docker cp "$HERMES_CONTAINER:/tmp/hermes-profiles.tar.gz" "$TMP_DIR/hermes-profiles.tar.gz"
-stage_snapshot_file "$TMP_DIR/hermes-profiles.tar.gz" "$SNAPSHOT_DIR" "hermes-profiles.tar.gz"
-
-# ── 4. Retention sweep ─────────────────────────────────────────────────
-log "Pruning snapshots older than $RETENTION_DAYS days"
-find "$REPO_DIR" -maxdepth 1 -type d -regextype posix-extended \
-  -regex '.*/[0-9]{4}-[0-9]{2}-[0-9]{2}$' \
-  -mtime "+$RETENTION_DAYS" -exec rm -rf {} + 2>/dev/null || true
-
-# ── 5. Commit + push ───────────────────────────────────────────────────
-cd "$REPO_DIR"
-git add -A
-if git diff --cached --quiet; then
-  log "No changes to commit (snapshot identical to previous?)"
   log "=== Done ==="
-  exit 0
-fi
-
-git -c user.name="agent-state-nightly-backup" \
-    -c user.email="nightly-backup@${AGENT_STATE_BRAND}.agent" \
-    commit -q -m "Nightly snapshot: $DATE ($AGENT_STATE_BRAND)"
-"${git_auth_env[@]}" git push -q origin HEAD:main
-log "Pushed snapshot for $DATE"
-log "=== Done ==="
 }
 
 if [[ "${AGENT_STATE_TEST_SOURCE_ONLY:-0}" != "1" ]]; then

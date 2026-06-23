@@ -31,7 +31,7 @@
 The runtime contract is documented in `.env.example`. Real values live in each brand's Coolify app
 (or `.env` for local dev). Notable keys: `TEMPLATE_AGENT_IMAGE` (pinned image tag),
 `PAPERCLIP_PROFILE_SYNC_API_KEY` (gates profile-sync), `HERMES_PROFILES`, `GH_TOKEN` (private repo
-access). See `AGENTS.md` → Runtime Operations for the do-NOT-override keys
+access), and `AGENT_STATE_REPO` / `AGENT_STATE_TOKEN` (GitHub Release backups). See `AGENTS.md` → Runtime Operations for the do-NOT-override keys
 (`PAPERCLIP_ALLOWED_HOSTNAMES`, `PAPERCLIP_API_BASE`).
 
 ## Volumes (DATA — never reshape without a backup)
@@ -43,12 +43,18 @@ holds the Paperclip DB + Hermes profiles/state.
 
 ## Pre-deploy backup (volume-wipe protection)
 `paperclip/pre-deploy-backup.sh` runs as each brand's Coolify `pre_deployment_command`. It dumps the
-Paperclip DB + tars Hermes state and pushes a snapshot to the brand state repo's `agent-state`
-branch BEFORE Coolify swaps the container. See `docs/pre-deploy-backup.md`.
+Paperclip DB + tars Hermes state and uploads a snapshot to GitHub Releases on the brand state repo
+BEFORE Coolify swaps the container. See `docs/pre-deploy-backup.md`.
 
 - Wire in each consuming brand: Coolify → General → Pre-Deployment → command `bash /opt/paperclip/pre-deploy-backup.sh`, container `paperclip`.
-- Snapshots go to `AGENT_STATE_BRANCH` (default `agent-state`) — NEVER the deploy branch, or the
-  push triggers an auto-deploy loop.
+- Snapshots live as Release assets on `AGENT_STATE_REPO`, tagged `predeploy-YYYYMMDDTHHMMSSZ`.
+  They are outside git history; the old `agent-state` branch model is deprecated/deleted.
+- Release assets are `paperclip-db.sql.gz`, `hermes-profiles.tar.gz`, and `manifest.json`
+  uploaded last. Restore should only trust releases with a valid manifest and matching sha256s.
+- `AGENT_STATE_TOKEN` is required when `AGENT_STATE_REPO` is set. SSH deploy keys cannot create
+  releases, upload assets, verify asset digests, or prune release tags through the REST API.
+- `AGENT_STATE_RETENTION_DAYS` defaults to 30. The hook prunes old `predeploy-*` releases and tags
+  after a successful upload, bounding storage growth without rewriting git history.
 - `db:backup` retries on embedded-postgres warmup (`AGENT_STATE_BACKUP_RETRIES`, default 6) and is
   fail-closed: a missing backup aborts the deploy rather than swapping without a recovery point.
 

@@ -8,41 +8,48 @@ If you're spinning up a new brand, follow [Setup](#setup-a-new-brand). If you're
 
 The dual container stores all live state (Paperclip DB, Hermes profiles) on a single `/data` volume. Volume-shape changes during deploy have wiped this volume in the past (3× in one week on the Haverford instance, per the [`feedback_paperclip_volume_shape_change_wipes_data`](https://github.com/leebaroneau/lee-dashboard/blob/main/.claude/projects/-Users-leebaroneau-Documents-GitHub-lee-dashboard/memory/feedback_paperclip_volume_shape_change_wipes_data.md) memory). Two backup mechanisms layer to keep data loss windows tight:
 
-| When | Mechanism | Ships from | Pushes to |
+| When | Mechanism | Ships from | Writes to |
 | :---- | :---- | :---- | :---- |
-| Nightly @ 17:00 UTC | Host-side cron runs [`scripts/host/nightly-backup.sh`](../scripts/host/nightly-backup.sh) | template-agent (template; operator copies once) | brand state repo |
-| Before every deploy | Coolify `pre_deployment_command` runs [`paperclip/pre-deploy-backup.sh`](../paperclip/pre-deploy-backup.sh) inside the OLD container | template-agent (baked into image) | brand state repo |
+| Nightly @ 17:00 UTC | Host-side cron runs [`scripts/host/nightly-backup.sh`](../scripts/host/nightly-backup.sh) | template-agent (template; operator copies once) | GitHub Release assets on the brand state repo |
+| Before every deploy | Coolify `pre_deployment_command` runs [`paperclip/pre-deploy-backup.sh`](../paperclip/pre-deploy-backup.sh) inside the OLD container | template-agent (baked into image) | GitHub Release assets on the brand state repo |
 
-Both push to the same `<Org>/agent-<brand>` GitHub repo, which holds dated snapshot directories with the Paperclip DB dump and tarred Hermes profiles.
+Both write to the same `<Org>/agent-<brand>` GitHub repo, using Release tags named
+`nightly-YYYYMMDDTHHMMSSZ` and `predeploy-YYYYMMDDTHHMMSSZ`. The assets live outside git history:
+`paperclip-db.sql.gz`, `hermes-profiles.tar.gz`, and `manifest.json`.
 
-Hermes profile archives intentionally exclude reconstructible dependency/cache folders and nested historical profile backups (`profile-backups`, `python-packages`, `bin`, `lsp`, `cache`, `audio_cache`, `__pycache__`). The state repo should preserve current operational state, not duplicate package installs. Any snapshot file above `AGENT_STATE_ARCHIVE_SPLIT_BYTES` is committed as numbered `.part-0000` files so GitHub's 100 MB per-file limit does not block deploys.
+Hermes profile archives intentionally exclude reconstructible dependency/cache folders and nested
+historical profile backups (`profile-backups`, `python-packages`, `bin`, `lsp`, `cache`,
+`audio_cache`, `__pycache__`). The state repo should preserve current operational state, not
+duplicate package installs. Release assets are uploaded whole; the old split-file git commit model is
+deprecated.
 
 ## Uniform repo shape
 
 Every brand deployment uses the same repo boundary:
 
 - `leebaroneau/template-agent` is the only deployable code base for the stock Paperclip+Hermes stack.
-- `<Org>/agent-<brand>` is a private state-only repo. It holds nightly and pre-deploy snapshots only, not Dockerfiles, compose files, runtime seed scripts, or brand wrapper code.
+- `<Org>/agent-<brand>` is a private state-only repo. It holds nightly and pre-deploy Release
+  snapshots only, not Dockerfiles, compose files, runtime seed scripts, or brand wrapper code.
 - Coolify deploys the brand stack from `template-agent` and injects brand-specific settings through environment variables, persistent storage, and the `/data` volume.
-- Both backup paths push into the brand's `agent-<brand>` repo so restore history lives with the brand while deployable code stays centralized.
+- Both backup paths upload to the brand's `agent-<brand>` repo so restore history lives with the brand while deployable code stays centralized.
 
-If an older brand repo still contains a deployment wrapper or forked agent code, archive that history to a branch/tag before converting `main` to the state-only snapshot layout.
+If an older brand repo still contains a deployment wrapper, forked agent code, or the deprecated
+`agent-state` snapshot branch, archive or delete that history before relying on Release assets as the
+canonical state store.
 
 ## Mandatory requirements per brand
 
 A brand deployment is "compliant" iff all of the following are true:
 
 - [ ] A private GitHub repo exists at `<Org>/agent-<brand>` (state-only; no code)
-- [ ] An SSH deploy key with write access is registered on that repo. If deploy keys are disabled for the repo/org, use a root-owned GitHub token file instead.
-- [ ] The droplet host has the private key at a known path (e.g. `/root/.ssh/agent-<brand>-deploy`, mode 600), or a root-owned token file at `/root/agent-state-backup/github-token` (mode 600)
-- [ ] An `ssh-keyscan github.com` line is in the droplet's `~/.ssh/known_hosts`
-- [ ] The state repo has been cloned once on the droplet at `/root/agent-state-backup/repo` (or equivalent), with the SSH alias `github-agent-state` mapping the deploy key to github.com
-- [ ] A `backup.env` file on the droplet sets `AGENT_STATE_REPO`, `AGENT_STATE_BRAND`, `AGENT_STATE_COMPOSE_FILTER`, and either `AGENT_STATE_KEY` or `AGENT_STATE_TOKEN_FILE`
+- [ ] A GitHub token with `contents:write` on that repo is available to both backup paths
+- [ ] The droplet host has a root-owned token file at `/root/agent-state-backup/github-token` (mode 600)
+- [ ] A `backup.env` file on the droplet sets `AGENT_STATE_REPO`, `AGENT_STATE_BRAND`, `AGENT_STATE_COMPOSE_FILTER`, `AGENT_STATE_TOKEN_FILE`, and `AGENT_STATE_RETENTION_DAYS`
 - [ ] A cron entry at `0 17 * * *` UTC (or equivalent) runs `nightly-backup.sh` and appends to `/var/log/agent-state-backup.log`
-- [ ] Coolify env vars on the application include `AGENT_STATE_REPO`, `AGENT_STATE_BRAND`, and either `AGENT_STATE_DEPLOY_KEY` (base64 of the private key; marked secret) or `AGENT_STATE_TOKEN` (marked secret)
+- [ ] Coolify env vars on the application include `AGENT_STATE_REPO`, `AGENT_STATE_BRAND`, `AGENT_STATE_TOKEN`, and optionally `AGENT_STATE_RETENTION_DAYS`
 - [ ] Coolify `pre_deployment_command` is set to `bash /opt/paperclip/pre-deploy-backup.sh`
 - [ ] Coolify `pre_deployment_command_container` is set to `paperclip` (the dual-container's paperclip service)
-- [ ] At least one nightly commit AND one pre-deploy commit have landed on the state repo
+- [ ] At least one valid `nightly-*` release AND one valid `predeploy-*` release exist on the state repo
 
 The [Compliance audit](#compliance-audit) section is a checklist that maps each of these to a one-line shell check.
 
@@ -50,7 +57,7 @@ The [Compliance audit](#compliance-audit) section is a checklist that maps each 
 
 You will need:
 - A GitHub organization to hold the state repo (`alx-finance`, `haverford-brands`, etc.)
-- A `gh` CLI session authenticated as a user with `admin:public_key` scope on the target repo (for adding the deploy key)
+- A GitHub token with `contents:write` on the target state repo
 - SSH access to the brand's droplet (`ssh <brand>-droplet`)
 - Coolify API access for the brand (token + base URL)
 
@@ -63,54 +70,32 @@ gh repo create <Org>/agent-<brand> --private \
 
 Seed a `README.md` describing the snapshot layout (see [`Haverford-Brands/agent-haverford/README.md`](https://github.com/Haverford-Brands/agent-haverford) for a canonical example).
 
-### 2. Generate the deploy key + register it
+### 2. Store the backup token
 
 ```bash
-# On the droplet, NOT on your laptop, so the key never leaves prod:
+# On the droplet, store a GitHub token with contents:write on the state repo.
 ssh <brand>-droplet
-ssh-keygen -t ed25519 -C "agent-<brand>-state-backup@<brand>-droplet" \
-  -f ~/.ssh/agent-<brand>-deploy -N ''
-
-# Register the public half on the state repo (write-enabled):
-gh api -X POST repos/<Org>/agent-<brand>/keys \
-  -f title="<brand>-droplet state backup" \
-  -f key="$(cat ~/.ssh/agent-<brand>-deploy.pub)" \
-  -F read_only=false
-```
-
-If GitHub returns `Deploy keys are disabled for this repository`, store a GitHub token with push access as `/root/agent-state-backup/github-token` on the droplet (`chmod 600`) and use `AGENT_STATE_TOKEN_FILE=/root/agent-state-backup/github-token` in `backup.env`. For the Coolify pre-deploy hook, set `AGENT_STATE_TOKEN` as a secret runtime variable instead of `AGENT_STATE_DEPLOY_KEY`.
-
-### 3. Wire SSH alias + first clone (host-side)
-
-```bash
-# Append to droplet's ~/.ssh/config:
-cat >> ~/.ssh/config <<EOF
-Host github-agent-state
-  HostName github.com
-  User git
-  IdentityFile /root/.ssh/agent-<brand>-deploy
-  IdentitiesOnly yes
-  StrictHostKeyChecking accept-new
-EOF
-
 mkdir -p /root/agent-state-backup
-git clone github-agent-state:<Org>/agent-<brand>.git /root/agent-state-backup/repo
+printf '%s\n' '<github-token>' > /root/agent-state-backup/github-token
+chmod 600 /root/agent-state-backup/github-token
 ```
 
-### 4. Install the nightly script + env file + cron
+SSH deploy keys are not sufficient for this backup path. GitHub Release asset upload, digest
+verification, release pruning, and tag deletion all require the REST API with a bearer token.
+
+### 3. Install the nightly script + helper + env file + cron
 
 ```bash
-# Copy the template script onto the droplet:
+# Copy the template script and shared Release helper onto the droplet:
 scp scripts/host/nightly-backup.sh <brand>-droplet:/root/agent-state-backup/nightly-backup.sh
+scp paperclip/lib/release-backup.sh <brand>-droplet:/root/agent-state-backup/release-backup.sh
 ssh <brand>-droplet "chmod +x /root/agent-state-backup/nightly-backup.sh"
 
 # Create /root/agent-state-backup/backup.env with the brand's values:
 ssh <brand>-droplet "cat > /root/agent-state-backup/backup.env <<EOF
 AGENT_STATE_REPO=<Org>/agent-<brand>
 AGENT_STATE_BRAND=<brand>
-AGENT_STATE_KEY=/root/.ssh/agent-<brand>-deploy
-# Or, when deploy keys are disabled:
-# AGENT_STATE_TOKEN_FILE=/root/agent-state-backup/github-token
+AGENT_STATE_TOKEN_FILE=/root/agent-state-backup/github-token
 AGENT_STATE_COMPOSE_FILTER=<coolify-app-uuid>
 AGENT_STATE_RETENTION_DAYS=30
 EOF
@@ -124,32 +109,26 @@ ssh <brand>-droplet "(crontab -l 2>/dev/null | grep -v 'agent-state-backup'; \
 ssh <brand>-droplet "/root/agent-state-backup/nightly-backup.sh"
 ```
 
-A new commit should land on `<Org>/agent-<brand>`. If not, check `/var/log/agent-state-backup.log` on the droplet.
+A new `nightly-*` Release should land on `<Org>/agent-<brand>`. If not, check
+`/var/log/agent-state-backup.log` on the droplet.
 
-### 5. Wire the Coolify pre-deploy hook
+### 4. Wire the Coolify pre-deploy hook
 
 ```bash
 TOKEN="<coolify-api-token-for-this-brand>"
 BASE="<coolify-base-url>"
 APP_UUID="<coolify-app-uuid>"
 
-# Set the three env vars on the Coolify application:
+# Set the env vars on the Coolify application:
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   "$BASE/api/v1/applications/$APP_UUID/envs" \
   -d "{\"key\":\"AGENT_STATE_REPO\",\"value\":\"<Org>/agent-<brand>\",\"is_preview\":false,\"is_buildtime\":false}"
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   "$BASE/api/v1/applications/$APP_UUID/envs" \
   -d "{\"key\":\"AGENT_STATE_BRAND\",\"value\":\"<brand>\",\"is_preview\":false,\"is_buildtime\":false}"
-
-# For the SSH key, do the base64 + POST on the droplet so the secret
-# never leaves prod (and never lands in your shell history):
-ssh <brand>-droplet "KEY_B64=\$(base64 -w 0 ~/.ssh/agent-<brand>-deploy); \
-  jq -nc --arg v \"\$KEY_B64\" '{key:\"AGENT_STATE_DEPLOY_KEY\", value:\$v, is_preview:false, is_buildtime:false, is_literal:true, is_multiline:false}' | \
-  curl -sS -X POST -H 'Authorization: Bearer $TOKEN' -H 'Content-Type: application/json' \
-    --data-binary @- '$BASE/api/v1/applications/$APP_UUID/envs'"
-
-# If deploy keys are disabled, set AGENT_STATE_TOKEN as a secret runtime env
-# instead of AGENT_STATE_DEPLOY_KEY.
+curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  "$BASE/api/v1/applications/$APP_UUID/envs" \
+  -d "{\"key\":\"AGENT_STATE_TOKEN\",\"value\":\"<github-token>\",\"is_preview\":false,\"is_buildtime\":false}"
 
 # Set pre_deployment_command + container:
 curl -sS -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
@@ -159,39 +138,39 @@ curl -sS -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: applicatio
 
 > ⚠️ Coolify's API field name is `pre_deployment_command_container` (with `_command`). The GET response uses `pre_deployment_container_name` (without `_command`). Use `_command_container` for PATCH, despite the inconsistency.
 
-### 6. Two-deploy bootstrap
+### 5. Two-deploy bootstrap
 
-The pre-deploy hook reads the env vars on the OLD container, but the OLD container predates step 5 so it doesn't have them yet. You need two deploys to fully bootstrap:
+The pre-deploy hook reads the env vars on the OLD container, but the OLD container predates step 4 so it doesn't have them yet. You need two deploys to fully bootstrap:
 
 ```bash
-# Deploy 1: container restarts with the new env vars (including key);
-# pre-deploy on the OLD container safely no-ops since no key is present.
+# Deploy 1: container restarts with the new env vars (including token);
+# pre-deploy on the OLD container safely no-ops if AGENT_STATE_REPO is not present.
 curl -sS -X GET -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/deploy?uuid=$APP_UUID&force=true"
 
 # Wait for deploy 1 to finish (status=finished), then deploy 2:
-# This one's OLD container HAS the key, so pre-deploy fires correctly.
+# This one's OLD container HAS the token, so pre-deploy fires correctly.
 curl -sS -X GET -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/deploy?uuid=$APP_UUID&force=true"
 ```
 
-After deploy 2, a `Pre-deploy snapshot: <date> (<brand>)` commit should appear on `<Org>/agent-<brand>` — by the `agent-state-pre-deploy` author, not the nightly `agent-state-nightly-backup` author.
+After deploy 2, a `predeploy-*` Release should appear on `<Org>/agent-<brand>`.
 
 ## Compliance audit
 
 For an existing brand, run these one-liners. Each `✓` means that requirement is met.
 
 ```bash
-# 1. State repo exists + has content
-gh api repos/<Org>/agent-<brand>/commits --jq 'length' && echo "✓ state repo has commits"
+# 1. State repo exists + has releases
+gh api repos/<Org>/agent-<brand>/releases --jq 'length' && echo "✓ state repo has releases"
 
-# 2. Last nightly commit is < 36h old
-last_nightly=$(gh api repos/<Org>/agent-<brand>/commits \
-  --jq '[.[] | select(.commit.author.name=="agent-state-nightly-backup")][0].commit.author.date')
+# 2. Last nightly release is < 36h old
+last_nightly=$(gh api repos/<Org>/agent-<brand>/releases \
+  --jq '[.[] | select(.tag_name | startswith("nightly-"))][0].published_at')
 echo "Last nightly: $last_nightly"
 
-# 3. Pre-deploy commits exist
-gh api repos/<Org>/agent-<brand>/commits \
-  --jq '[.[] | select(.commit.author.name=="agent-state-pre-deploy")] | length' \
-  | xargs -I{} echo "Pre-deploy commits found: {}"
+# 3. Pre-deploy releases exist
+gh api repos/<Org>/agent-<brand>/releases \
+  --jq '[.[] | select(.tag_name | startswith("predeploy-"))] | length' \
+  | xargs -I{} echo "Pre-deploy releases found: {}"
 
 # 4. Cron is installed on the droplet
 ssh <brand>-droplet "crontab -l | grep -E 'agent-state-backup' && echo '✓ cron installed'"
@@ -203,7 +182,7 @@ ssh <brand>-droplet "test -f /root/agent-state-backup/backup.env && echo '✓ ba
 # 6. Coolify env vars are set
 TOKEN="<coolify-api-token>"; BASE="<coolify-base-url>"; APP_UUID="<coolify-app-uuid>"
 curl -sS -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/applications/$APP_UUID/envs" \
-  | jq -r '.[].key' | grep -E '^AGENT_STATE_(REPO|BRAND|DEPLOY_KEY)$' | sort -u
+  | jq -r '.[].key' | grep -E '^AGENT_STATE_(REPO|BRAND|TOKEN|RETENTION_DAYS)$' | sort -u
 
 # 7. Coolify pre_deployment_command is set
 curl -sS -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/applications/$APP_UUID" \
@@ -214,29 +193,19 @@ If any line is missing or returns an empty result, that requirement is NOT met. 
 
 ## Restore
 
-The state repo's own README documents the restore procedure for that specific brand. The general pattern:
+The state repo's own README documents the restore procedure for that specific brand. The general pattern is to run the image-baked restore helper inside the paperclip container:
 
 ```bash
-# 1. SSH to droplet, clone the state repo
-git clone github-agent-state:<Org>/agent-<brand>.git
-cd agent-<brand>/<date-to-restore-from>
-
-# 2. Restore Paperclip DB
-docker cp paperclip-db.sql.gz <paperclip-container>:/tmp/
-docker exec <paperclip-container> paperclipai db:restore /tmp/paperclip-db.sql.gz
-
-# 3. Restore Hermes profiles
-if ls hermes-profiles.tar.gz.part-* >/dev/null 2>&1; then
-  cat hermes-profiles.tar.gz.part-* > hermes-profiles.tar.gz
-fi
-
-docker cp hermes-profiles.tar.gz <hermes-container>:/data/
-docker exec <hermes-container> bash -c 'cd /data && tar xzf hermes-profiles.tar.gz'
+docker exec <paperclip-container> bash /opt/paperclip/restore-backup.sh --force latest
+docker exec <paperclip-container> bash /opt/paperclip/restore-backup.sh --force --tag predeploy-YYYYMMDDTHHMMSSZ
 ```
+
+The helper downloads `manifest.json`, refuses missing or mismatched checksums, restores the DB via
+`paperclipai db:restore`, extracts Hermes state into `/data`, and fixes ownership.
 
 ## Related docs
 
-- [`docs/pre-deploy-backup.md`](pre-deploy-backup.md) — deeper dive on the Coolify pre-deploy hook (what's in the image, env vars, generating the key)
+- [`docs/pre-deploy-backup.md`](pre-deploy-backup.md) — deeper dive on the Coolify pre-deploy hook, Release assets, env vars, and restore
 - [`scripts/host/nightly-backup.sh`](../scripts/host/nightly-backup.sh) — the host-side nightly script (brand-agnostic via env)
 - [`paperclip/pre-deploy-backup.sh`](../paperclip/pre-deploy-backup.sh) — the in-container pre-deploy script (baked into the image)
 
