@@ -638,6 +638,7 @@ release_backup_prune_releases() {
   local retention_days="$4"
   local now="${RELEASE_BACKUP_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
   local releases_file id tag created_at tmp status encoded_tag
+  local kept_latest=0
 
   if [[ ! "$retention_days" =~ ^[0-9]+$ ]]; then
     release_backup_log "ERROR: retention days must be a non-negative integer; got '$retention_days'"
@@ -645,10 +646,18 @@ release_backup_prune_releases() {
   fi
 
   releases_file="$(mktemp -t release-backup-prune-XXXXXX)"
+  # list_releases returns this kind's releases newest-first.
   release_backup_list_releases "$repo" "$token" "$kind" > "$releases_file" || return 1
 
   while IFS=$'\t' read -r id tag created_at; do
     [[ -n "$id" && -n "$tag" && -n "$created_at" ]] || continue
+    # Always keep the most-recent release of this kind as a guaranteed recovery
+    # point, regardless of retention age. Defends against retention_days=0 or
+    # clock skew deleting the snapshot we just created.
+    if (( kept_latest == 0 )); then
+      kept_latest=1
+      continue
+    fi
     if ! release_backup_is_older_than "$created_at" "$retention_days" "$now"; then
       continue
     fi

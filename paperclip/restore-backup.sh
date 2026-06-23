@@ -153,6 +153,16 @@ restore_database() {
 restore_hermes_profiles() {
   local profiles_file="$1"
 
+  # Defense-in-depth: refuse archives whose members would escape /data
+  # (absolute paths or parent-directory traversal) before extracting.
+  local unsafe
+  unsafe="$(tar tzf "$profiles_file" | grep -nE '^/|(^|/)\.\.(/|$)' || true)"
+  if [[ -n "$unsafe" ]]; then
+    log "ERROR: refusing to restore; archive contains unsafe paths:"
+    printf '%s\n' "$unsafe" | head -5 >&2
+    return 1
+  fi
+
   log "Extracting Hermes profiles into /data"
   tar xzf "$profiles_file" -C /data
 }
