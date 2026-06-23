@@ -31,10 +31,10 @@ fi
 
 export ORG_MIRROR_ROOT="${ORG_MIRROR_ROOT:-/data/agent-stack}"
 
-# Install per-brand state-repo SSH deploy key on container start so the
-# pre-deployment backup hook (paperclip/pre-deploy-backup.sh) can push to
-# the state repo. Coolify supplies the key as base64 via AGENT_STATE_DEPLOY_KEY
-# env var. Safe no-op when unset.
+# Legacy compatibility: older deployments may still supply AGENT_STATE_DEPLOY_KEY.
+# GitHub Release backups now require AGENT_STATE_TOKEN; the key is installed only
+# so old containers do not break during a transition. Key-only backup config will
+# fail closed in pre-deploy-backup.sh with an AGENT_STATE_TOKEN message.
 if [[ -n "${AGENT_STATE_DEPLOY_KEY:-}" ]]; then
   install -d -m 700 -o node -g node /home/node/.ssh
   KEY_FILE="${AGENT_STATE_KEY_FILE:-/home/node/.ssh/agent-state-deploy}"
@@ -46,7 +46,7 @@ if [[ -n "${AGENT_STATE_DEPLOY_KEY:-}" ]]; then
     ssh-keyscan -t rsa,ecdsa,ed25519 github.com 2>/dev/null >> /home/node/.ssh/known_hosts || true
     chown node:node /home/node/.ssh/known_hosts 2>/dev/null || true
   fi
-  echo "[agent-stack] AGENT_STATE_DEPLOY_KEY installed at $KEY_FILE for pre-deploy backups"
+  echo "[agent-stack] AGENT_STATE_DEPLOY_KEY installed at $KEY_FILE (deprecated for Release backups; set AGENT_STATE_TOKEN)"
 fi
 
 mkdir -p "$HERMES_DATA_ROOT" /home/node/.hermes /opt/work /data/.locks

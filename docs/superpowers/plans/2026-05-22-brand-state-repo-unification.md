@@ -1,5 +1,10 @@
 # Brand State Repo Unification Implementation Plan
 
+> Current backup storage note: the durable backup model has been superseded by GitHub Release
+> assets on each brand's `agent-<brand>` repo. The deploy-key, branch-commit, and dated-directory
+> backup steps below are historical context only; new backup wiring should use
+> `AGENT_STATE_TOKEN`, `predeploy-*` / `nightly-*` releases, and manifest-verified assets.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Convert ALX and Genvest to the same deployment shape as Haverford: deployable code comes from `template-agent`, and each brand's `agent-<brand>` repo stores only nightly and pre-deploy state snapshots.

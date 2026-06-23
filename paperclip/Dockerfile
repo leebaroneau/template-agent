@@ -24,7 +24,9 @@ COPY paperclip/important-information-index.md /opt/paperclip/important-informati
 COPY paperclip/entrypoint.sh /opt/paperclip/entrypoint.sh
 COPY paperclip/hermes-entrypoint.sh /opt/paperclip/hermes-entrypoint.sh
 COPY paperclip/coolify-preview-env.mjs /opt/paperclip/coolify-preview-env.mjs
+COPY paperclip/lib /opt/paperclip/lib
 COPY paperclip/pre-deploy-backup.sh /opt/paperclip/pre-deploy-backup.sh
+COPY paperclip/restore-backup.sh /opt/paperclip/restore-backup.sh
 COPY paperclip/patch-hermes-adapter-env.mjs /opt/paperclip/patch-hermes-adapter-env.mjs
 COPY paperclip/patch-hermes-adapter-skills-home.mjs /opt/paperclip/patch-hermes-adapter-skills-home.mjs
 COPY paperclip/patch-hermes-profile-skill-count.mjs /opt/paperclip/patch-hermes-profile-skill-count.mjs
@@ -49,7 +51,7 @@ RUN mkdir -p /data /opt/work \
   && chown -R node:node /data /opt/work \
   && chmod +x /opt/hermes-runtime/scripts/*.sh \
   && chmod +x /usr/local/bin/bun \
-  && chmod +x /opt/paperclip/entrypoint.sh /opt/paperclip/hermes-entrypoint.sh /opt/paperclip/pre-deploy-backup.sh
+  && chmod +x /opt/paperclip/entrypoint.sh /opt/paperclip/hermes-entrypoint.sh /opt/paperclip/pre-deploy-backup.sh /opt/paperclip/restore-backup.sh
 
 EXPOSE 3100 9119
 

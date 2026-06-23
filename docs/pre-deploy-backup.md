@@ -1,15 +1,25 @@
 # Pre-deployment backup
 
-When a Paperclip+Hermes deployment is replaced (e.g. by a Coolify redeploy after a compose-shape change), the `/data` volume sometimes gets wiped. This template ships a pre-deployment backup hook that snapshots the volume to a per-brand state repo on GitHub *before* the new container takes over.
+When a Paperclip+Hermes deployment is replaced, the shared `/data` volume must have a recovery point
+outside the volume before Coolify swaps containers. This template ships a pre-deployment backup hook
+that writes snapshots to GitHub Release assets on the brand's own `agent-<brand>` state repo.
 
 ## How it works
 
-1. **Container start.** `paperclip/entrypoint.sh` reads `AGENT_STATE_DEPLOY_KEY` from env. If set, it base64-decodes it into `/home/node/.ssh/agent-state-deploy` (`chmod 600`, owned by `node`) and pins `github.com`'s host key into `known_hosts`.
-2. **Coolify deploy starts.** Coolify's `pre_deployment_command` runs `docker exec` against the OLD container, invoking `bash /opt/paperclip/pre-deploy-backup.sh`.
-3. **The script** dumps Paperclip's DB (`paperclipai db:backup`), tars `/data/hermes/profiles/`, clones the state repo via the deploy key, drops the snapshots into a `YYYY-MM-DD/` directory, commits and pushes.
-4. **Coolify replaces the container.** The new container's entrypoint re-installs the SSH key, ready for the next deploy.
+1. **Coolify deploy starts.** Coolify runs `bash /opt/paperclip/pre-deploy-backup.sh` in the old
+   `paperclip` container.
+2. **The script dumps state.** It runs `paperclipai db:backup`, tars Hermes profile state from
+   `/data`, and creates or reuses a GitHub Release tagged `predeploy-YYYYMMDDTHHMMSSZ`.
+3. **The script uploads Release assets.** It uploads `paperclip-db.sql.gz`,
+   `hermes-profiles.tar.gz`, verifies each asset's size and `sha256` digest through the Releases
+   API, then writes and uploads `manifest.json` last.
+4. **Retention runs.** Releases tagged `predeploy-*` older than `AGENT_STATE_RETENTION_DAYS`
+   are deleted, and their git tags are deleted through the API.
+5. **Coolify replaces the container.** If any configured backup step fails, the hook exits non-zero
+   and the deploy is blocked.
 
-If `AGENT_STATE_DEPLOY_KEY` is unset, both the entrypoint key-install and the backup script are graceful no-ops — the deployment proceeds unchanged. This keeps the template usable for new instances that haven't wired up a state repo yet.
+If `AGENT_STATE_REPO` is unset, the script exits 0 as a graceful no-op. This keeps blank-template
+deployments usable before a state repo exists. Once `AGENT_STATE_REPO` is set, the hook is fail-closed.
 
 ## Required env vars
 
@@ -17,64 +27,79 @@ Set these in the Coolify application's Environment Variables tab:
 
 | Variable | Required | Example | Notes |
 | :---- | :---: | :---- | :---- |
-| `AGENT_STATE_REPO` | yes | `Haverford-Brands/agent-haverford` | The state-only repo to push snapshots to. |
-| `AGENT_STATE_BRAND` | no | `haverford` | Short slug used in commit messages. Defaults to the repo basename. |
-| `AGENT_STATE_DEPLOY_KEY` | yes | `LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZ...` (base64) | Base64 of an SSH private key whose public half is registered as a write-enabled deploy key on the state repo. Generate per-brand; never share across brands. |
+| `AGENT_STATE_REPO` | yes to enable | `<Org>/agent-<brand>` | Repo that owns the Release backups. Leave blank for a no-op. |
+| `AGENT_STATE_TOKEN` | yes when enabled | `github_pat_...` | GitHub token with `contents:write` on the state repo. Store as a secret. |
+| `AGENT_STATE_BRAND` | no | `<brand>` | Short slug for logs and manifest metadata. Defaults to the repo basename. |
 
 Optional overrides:
 
 | Variable | Default | Notes |
 | :---- | :---- | :---- |
-| `AGENT_STATE_KEY_FILE` | `/home/node/.ssh/agent-state-deploy` | Where the entrypoint writes the decoded key. Change only if you need an alternate path. |
-| `AGENT_STATE_WORKDIR` | `/tmp/agent-state-repo` | Working directory for the clone inside the container. |
+| `AGENT_STATE_RETENTION_DAYS` | `30` | Prunes old `predeploy-*` releases and tags after successful upload. |
+| `AGENT_STATE_BACKUP_RETRIES` | `6` | DB dump retry count for embedded-postgres warmup. |
+| `AGENT_STATE_BACKUP_RETRY_DELAY` | `10` | Seconds between DB dump attempts. |
+| `AGENT_STATE_SOURCE_COMMIT` | `unknown` | Optional commit/image identifier written into `manifest.json`. |
+
+Deprecated variables:
+
+| Variable | Status |
+| :---- | :---- |
+| `AGENT_STATE_BRANCH` | Deprecated. Snapshots no longer commit to a branch. |
+| `AGENT_STATE_DEPLOY_KEY`, `AGENT_STATE_KEY`, `AGENT_STATE_KEY_FILE` | Deprecated for backups. SSH deploy keys cannot create releases, upload Release assets, verify digests, or prune tags through the Releases REST API. |
+| `AGENT_STATE_ARCHIVE_SPLIT_BYTES` | Deprecated. Release assets are uploaded whole; do not split unless GitHub's 2 GB asset limit is exceeded. |
 
 ## Coolify wiring
 
 In the Coolify application's General → Pre-Deployment section:
 
 - **Pre-deployment command:** `bash /opt/paperclip/pre-deploy-backup.sh`
-- **Pre-deployment container:** `paperclip` (the compose service name where `paperclipai` lives)
+- **Pre-deployment container:** `paperclip`
 
-## Generating the deploy key
+The old container must already have `AGENT_STATE_REPO` and `AGENT_STATE_TOKEN`. When enabling the hook
+for the first time, deploy once to get the env vars into the running container, then deploy again to
+exercise the hook.
 
-On your droplet (or any machine):
+## Release layout
+
+Each snapshot is one GitHub Release:
+
+```text
+tag: predeploy-YYYYMMDDTHHMMSSZ
+assets:
+  paperclip-db.sql.gz
+  hermes-profiles.tar.gz
+  manifest.json
+```
+
+`manifest.json` is uploaded last and contains:
+
+- snapshot metadata: kind, tag, creation time, brand, repo, source, commit
+- file names, byte sizes, and `sha256` checksums for the DB and Hermes assets
+
+Restore tooling must refuse releases without a manifest or with mismatched checksums.
+
+## Restoring
+
+Use the restore helper inside a paperclip container:
 
 ```bash
-# 1. Generate a per-brand keypair
-ssh-keygen -t ed25519 -C "agent-<brand>-pre-deploy" -f ~/.ssh/agent-<brand>-deploy -N ''
-
-# 2. Add the public key as a write-enabled deploy key on the state repo
-gh api -X POST repos/<Org>/agent-<brand>/keys \
-  -f title="pre-deploy backup hook" \
-  -f key="$(cat ~/.ssh/agent-<brand>-deploy.pub)" \
-  -F read_only=false
-
-# 3. Base64-encode the private key and set it in Coolify
-base64 -w 0 ~/.ssh/agent-<brand>-deploy
-# Paste the output into Coolify as AGENT_STATE_DEPLOY_KEY (mark it as secret).
+bash /opt/paperclip/restore-backup.sh --force latest
+bash /opt/paperclip/restore-backup.sh --force --tag predeploy-YYYYMMDDTHHMMSSZ
 ```
 
-## State repo layout
+`--force` is required because restore overwrites live state. The script downloads `manifest.json`,
+verifies the listed assets, restores the DB with `paperclipai db:restore`, extracts Hermes state into
+`/data`, and repairs ownership.
 
-Each snapshot is committed as a dated directory at the repo root:
+## Host nightly backups
 
+The host cron script uses the same Release helper and writes `nightly-YYYYMMDDTHHMMSSZ` releases.
+When installing it on a droplet, copy both files:
+
+```bash
+scp scripts/host/nightly-backup.sh <host>:/root/agent-state-backup/nightly-backup.sh
+scp paperclip/lib/release-backup.sh <host>:/root/agent-state-backup/release-backup.sh
 ```
-agent-<brand>/
-├── README.md
-├── 2026-05-22/
-│   ├── paperclip-db.sql.gz
-│   └── hermes-profiles.tar.gz
-└── 2026-05-23/
-    └── ...
-```
 
-Files larger than `AGENT_STATE_ARCHIVE_SPLIT_BYTES` are committed as numbered
-`.part-0000` files to stay under GitHub's 100 MB per-file limit. The default
-split size is 95,000,000 bytes. Restore by concatenating matching parts in
-lexical order before running `tar`.
-
-A separate nightly cron on the droplet host (`/root/agent-haverford-backup/nightly-backup.sh` on the Haverford droplet) can co-exist with this pre-deploy hook. Both push to the same state repo; pre-deploy commits and nightly commits land naturally in date order.
-
-## Restoring from a snapshot
-
-See the state repo's own README for the canonical restore procedure.
+Set `AGENT_STATE_TOKEN_FILE=/root/agent-state-backup/github-token` in `backup.env`; SSH deploy keys
+are not a valid auth path for Release assets.
