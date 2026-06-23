@@ -108,7 +108,9 @@ build_hermes_archive() {
   local tmp_dir="$1"
 
   log "Taring Hermes profiles via $HERMES_CONTAINER"
-  docker exec "$HERMES_CONTAINER" bash -lc 'cd /data && tar czf /tmp/hermes-profiles.tar.gz --exclude="hermes/profiles/*/profile-backups" --exclude="hermes/profiles/*/python-packages" --exclude="hermes/profiles/*/bin" --exclude="hermes/profiles/*/lsp" --exclude="hermes/profiles/*/cache" --exclude="hermes/profiles/*/audio_cache" --exclude="*/__pycache__" hermes/profiles hermes/SOUL.md hermes/auth.json hermes/.env hermes/cron hermes/hooks 2>/dev/null'
+  # tar exit 1 = files changed/vanished mid-read (benign on a live system);
+  # only exit >=2 is a real failure. Translate so the docker exec succeeds on 0/1.
+  docker exec "$HERMES_CONTAINER" bash -lc 'cd /data || exit 2; tar czf /tmp/hermes-profiles.tar.gz --exclude="hermes/profiles/*/profile-backups" --exclude="hermes/profiles/*/python-packages" --exclude="hermes/profiles/*/bin" --exclude="hermes/profiles/*/lsp" --exclude="hermes/profiles/*/cache" --exclude="hermes/profiles/*/audio_cache" --exclude="*/__pycache__" hermes/profiles hermes/SOUL.md hermes/auth.json hermes/.env hermes/cron hermes/hooks 2>/dev/null; rc=$?; [ "$rc" -le 1 ]'
   docker cp "$HERMES_CONTAINER:/tmp/hermes-profiles.tar.gz" "$tmp_dir/hermes-profiles.tar.gz"
 }
 
