@@ -103,3 +103,16 @@ scp paperclip/lib/release-backup.sh <host>:/root/agent-state-backup/release-back
 
 Set `AGENT_STATE_TOKEN_FILE=/root/agent-state-backup/github-token` in `backup.env`; SSH deploy keys
 are not a valid auth path for Release assets.
+
+## Re-installing the nightly backup on a droplet
+
+Copy or pull this repo on the droplet, ensure `/root/agent-state-backup/github-token` exists and is
+non-empty, then run:
+
+```bash
+sudo scripts/host/install-nightly-backup.sh --repo <Org>/agent-<brand> --brand <brand> --compose-filter <coolify-app-uuid> --verify
+```
+
+The installer refreshes `nightly-backup.sh`, `release-backup.sh`, `backup.env`, and the cron line
+idempotently. Re-run it after backup script updates or when changing the state repo, compose filter,
+token path, or retention period.

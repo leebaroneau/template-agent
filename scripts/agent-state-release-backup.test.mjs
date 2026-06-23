@@ -1,12 +1,35 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import test from 'node:test';
 
 const execFileAsync = promisify(execFile);
+
+async function writeCrontabStub(bin, store) {
+  await mkdir(bin, { recursive: true });
+  const crontab = join(bin, 'crontab');
+  await writeFile(crontab, [
+    '#!/usr/bin/env bash',
+    'set -euo pipefail',
+    'store="$CRONTAB_STORE"',
+    'case "${1:-}" in',
+    '  -l)',
+    '    [[ -f "$store" ]] || exit 1',
+    '    cat "$store"',
+    '    ;;',
+    '  -)',
+    '    cat > "$store"',
+    '    ;;',
+    '  *)',
+    '    exit 64',
+    '    ;;',
+    'esac',
+  ].join('\n'));
+  await execFileAsync('chmod', ['+x', crontab]);
+}
 
 test('release backup helper writes a manifest with checksums and metadata', async () => {
   const root = await mkdtemp(join(tmpdir(), 'agent-state-manifest-'));
@@ -195,6 +218,122 @@ test('host nightly backup fails clearly when only an SSH key is configured', asy
         return true;
       },
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('host nightly installer writes env, refreshes scripts, removes legacy artifacts, and replaces cron idempotently', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'agent-state-installer-'));
+  const target = join(root, 'target');
+  const bin = join(root, 'bin');
+  const crontabStore = join(root, 'crontab');
+  const scriptPath = resolve('scripts/host/install-nightly-backup.sh');
+
+  try {
+    await mkdir(join(target, 'repo'), { recursive: true });
+    await writeFile(join(target, 'git-askpass.sh'), 'legacy');
+    await writeFile(join(target, 'github-token'), 'token\n');
+    await writeFile(crontabStore, [
+      'MAILTO=""',
+      `0 1 * * * ${target}/nightly-backup.sh >> /tmp/old.log 2>&1`,
+      '15 2 * * * /usr/local/bin/other-job',
+      '',
+    ].join('\n'));
+    await writeCrontabStub(bin, crontabStore);
+
+    const env = {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH}`,
+      CRONTAB_STORE: crontabStore,
+    };
+    const args = [
+      scriptPath,
+      '--repo', 'Example/agent-example',
+      '--brand', 'example',
+      '--compose-filter', 'coolify-filter',
+      '--retention-days', '14',
+      '--target-dir', target,
+      '--cron-schedule', '5 4 * * *',
+    ];
+
+    await execFileAsync('bash', args, { env });
+    await execFileAsync('bash', args, { env });
+
+    assert.equal(await readFile(join(target, 'nightly-backup.sh'), 'utf8'), await readFile(resolve('scripts/host/nightly-backup.sh'), 'utf8'));
+    assert.equal(await readFile(join(target, 'release-backup.sh'), 'utf8'), await readFile(resolve('paperclip/lib/release-backup.sh'), 'utf8'));
+    assert.equal((await stat(join(target, 'nightly-backup.sh'))).mode & 0o777, 0o755);
+    assert.equal((await stat(join(target, 'release-backup.sh'))).mode & 0o777, 0o755);
+    assert.equal((await stat(join(target, 'github-token'))).mode & 0o777, 0o600);
+    assert.equal(await readFile(join(target, 'backup.env'), 'utf8'), [
+      'AGENT_STATE_REPO=Example/agent-example',
+      'AGENT_STATE_BRAND=example',
+      `AGENT_STATE_TOKEN_FILE=${target}/github-token`,
+      'AGENT_STATE_COMPOSE_FILTER=coolify-filter',
+      'AGENT_STATE_RETENTION_DAYS=14',
+      '',
+    ].join('\n'));
+
+    await assert.rejects(stat(join(target, 'repo')), { code: 'ENOENT' });
+    await assert.rejects(stat(join(target, 'git-askpass.sh')), { code: 'ENOENT' });
+
+    const crontab = await readFile(crontabStore, 'utf8');
+    assert.match(crontab, /^MAILTO=""/m);
+    assert.match(crontab, /^15 2 \* \* \* \/usr\/local\/bin\/other-job$/m);
+    assert.equal(crontab.split(`${target}/nightly-backup.sh`).length - 1, 1);
+    assert.match(
+      crontab,
+      new RegExp(`^5 4 \\* \\* \\* AGENT_STATE_ENV_FILE=${target}/backup\\.env ${target}/nightly-backup\\.sh >> /var/log/agent-state-backup\\.log 2>&1$`, 'm'),
+    );
+    assert.doesNotMatch(crontab, /\/tmp\/old\.log/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('host nightly installer verify runs copied nightly script with AGENT_STATE_ENV_FILE set', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'agent-state-installer-verify-'));
+  const source = join(root, 'source');
+  const target = join(root, 'target');
+  const bin = join(root, 'bin');
+  const crontabStore = join(root, 'crontab');
+  const verifyCapture = join(root, 'verify-env-file');
+  const scriptPath = resolve('scripts/host/install-nightly-backup.sh');
+
+  try {
+    await mkdir(join(source, 'scripts/host'), { recursive: true });
+    await mkdir(join(source, 'paperclip/lib'), { recursive: true });
+    await writeFile(join(source, 'scripts/host/nightly-backup.sh'), [
+      '#!/usr/bin/env bash',
+      'set -euo pipefail',
+      'printf "%s\\n" "$AGENT_STATE_ENV_FILE" > "$VERIFY_CAPTURE"',
+    ].join('\n'));
+    await writeFile(join(source, 'paperclip/lib/release-backup.sh'), [
+      '#!/usr/bin/env bash',
+      'set -euo pipefail',
+    ].join('\n'));
+    await mkdir(target, { recursive: true });
+    await writeFile(join(target, 'github-token'), 'token\n');
+    await writeCrontabStub(bin, crontabStore);
+
+    await execFileAsync('bash', [
+      scriptPath,
+      '--repo', 'Example/agent-example',
+      '--brand', 'example',
+      '--compose-filter', 'coolify-filter',
+      '--source-dir', source,
+      '--target-dir', target,
+      '--verify',
+    ], {
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        CRONTAB_STORE: crontabStore,
+        VERIFY_CAPTURE: verifyCapture,
+      },
+    });
+
+    assert.equal((await readFile(verifyCapture, 'utf8')).trim(), join(target, 'backup.env'));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
