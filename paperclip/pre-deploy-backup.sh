@@ -77,6 +77,7 @@ build_hermes_archive() {
   fi
 
   log "Taring Hermes profiles"
+  local tar_rc=0
   tar czf "$out_file" \
     --exclude='hermes/profiles/*/repos' \
     --exclude='hermes/profiles/*/profile-backups' \
@@ -88,7 +89,18 @@ build_hermes_archive() {
     --exclude='hermes/profiles/*/sessions' \
     --exclude='*/__pycache__' \
     -C /data \
-    "${tar_paths[@]}"
+    "${tar_paths[@]}" || tar_rc=$?
+
+  # tar exit 1 = "some files changed/vanished as we read them" — expected and
+  # benign when backing up a live system (agents write during the read); the
+  # archive is a valid point-in-time snapshot. Only exit >=2 is a real failure.
+  if (( tar_rc > 1 )); then
+    log "ERROR: tar failed (exit $tar_rc) while archiving Hermes profiles."
+    return 1
+  fi
+  if (( tar_rc == 1 )); then
+    log "WARN: some files changed during archive (tar exit 1); point-in-time snapshot retained."
+  fi
 }
 
 upload_and_verify_asset() {
