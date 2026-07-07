@@ -227,26 +227,39 @@ export function patchHermesTuiLazyInventorySource(source) {
     return source;
   }
 
-  let patched = replaceOnce(
-    source,
-    HELPER_NEEDLE,
-    `DESKTOP_BACKEND_CONTRACT = 2\n\n\n${LAZY_SESSION_INFO_HELPER}`,
-    'helper insertion',
-  );
-  patched = replaceOnce(patched, CREATE_INFO_NEEDLE, CREATE_INFO_REPLACEMENT, 'session.create');
-  patched = replaceOnce(
-    patched,
-    LAZY_RESUME_INFO_NEEDLE,
-    LAZY_RESUME_INFO_REPLACEMENT,
-    'lazy session.resume',
-  );
-  patched = replaceOnce(patched, CWD_SET_INFO_NEEDLE, CWD_SET_INFO_REPLACEMENT, 'session.cwd.set');
-  patched = replaceOnce(
-    patched,
-    FALLBACK_INFO_NEEDLE,
-    FALLBACK_INFO_REPLACEMENT,
-    'fallback session info',
-  );
+  // Apply all needles atomically: a partially patched server.py is worse than
+  // an unpatched one. The patch is cosmetic (TUI lazy 0-tools/0-skills), so a
+  // needle miss on a newer Hermes must never take the container down.
+  let patched;
+  try {
+    patched = replaceOnce(
+      source,
+      HELPER_NEEDLE,
+      `DESKTOP_BACKEND_CONTRACT = 2\n\n\n${LAZY_SESSION_INFO_HELPER}`,
+      'helper insertion',
+    );
+    patched = replaceOnce(patched, CREATE_INFO_NEEDLE, CREATE_INFO_REPLACEMENT, 'session.create');
+    patched = replaceOnce(
+      patched,
+      LAZY_RESUME_INFO_NEEDLE,
+      LAZY_RESUME_INFO_REPLACEMENT,
+      'lazy session.resume',
+    );
+    patched = replaceOnce(patched, CWD_SET_INFO_NEEDLE, CWD_SET_INFO_REPLACEMENT, 'session.cwd.set');
+    patched = replaceOnce(
+      patched,
+      FALLBACK_INFO_NEEDLE,
+      FALLBACK_INFO_REPLACEMENT,
+      'fallback session info',
+    );
+  } catch (err) {
+    console.warn(String(err?.message ?? err));
+    console.warn(
+      '[template-agent] Skipping Hermes TUI lazy inventory patch — upstream ' +
+        'tui_gateway/server.py changed. Re-audit the patch against this Hermes release.',
+    );
+    return source;
+  }
   return patched;
 }
 
