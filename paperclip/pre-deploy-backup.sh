@@ -29,6 +29,16 @@ paperclip_source_commit() {
   printf '%s' "${AGENT_STATE_SOURCE_COMMIT:-${SOURCE_COMMIT:-${GITHUB_SHA:-unknown}}}"
 }
 
+# Mirrors the truthy set in entrypoint.sh. When Paperclip is disabled its
+# postgres never starts, so a DB dump can only fail; the Hermes archive is
+# still taken fail-closed.
+paperclip_active() {
+  case "${PAPERCLIP_ENABLED:-0}" in
+    1|true|TRUE|True|yes|YES|Yes|on|ON|On) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 dump_paperclip_db() {
   local out_dir="$1"
   local db_file="" attempt=0
@@ -142,12 +152,21 @@ source_commit=$(paperclip_source_commit)"
 
   log "Brand: $brand  Repo: $AGENT_STATE_REPO  Release: $tag"
 
-  dump_paperclip_db "$TMP_DIR"
+  local -a backup_files=()
+  if paperclip_active; then
+    dump_paperclip_db "$TMP_DIR"
+    backup_files+=("$TMP_DIR/paperclip-db.sql.gz")
+  else
+    log "Paperclip disabled (PAPERCLIP_ENABLED=${PAPERCLIP_ENABLED:-0}); skipping Paperclip DB dump."
+  fi
   build_hermes_archive "$TMP_DIR/hermes-profiles.tar.gz"
+  backup_files+=("$TMP_DIR/hermes-profiles.tar.gz")
 
   release_id="$(release_backup_create_or_reuse_release "$AGENT_STATE_REPO" "$AGENT_STATE_TOKEN" "$tag" "$release_name" "$release_body")"
-  upload_and_verify_asset "$AGENT_STATE_REPO" "$AGENT_STATE_TOKEN" "$release_id" "$TMP_DIR/paperclip-db.sql.gz" "paperclip-db.sql.gz"
-  upload_and_verify_asset "$AGENT_STATE_REPO" "$AGENT_STATE_TOKEN" "$release_id" "$TMP_DIR/hermes-profiles.tar.gz" "hermes-profiles.tar.gz"
+  local backup_file
+  for backup_file in "${backup_files[@]}"; do
+    upload_and_verify_asset "$AGENT_STATE_REPO" "$AGENT_STATE_TOKEN" "$release_id" "$backup_file" "$(basename "$backup_file")"
+  done
 
   release_backup_write_manifest \
     "$TMP_DIR/manifest.json" \
@@ -158,8 +177,7 @@ source_commit=$(paperclip_source_commit)"
     "$AGENT_STATE_REPO" \
     "pre-deploy" \
     "$(paperclip_source_commit)" \
-    "$TMP_DIR/paperclip-db.sql.gz" \
-    "$TMP_DIR/hermes-profiles.tar.gz"
+    "${backup_files[@]}"
 
   upload_and_verify_asset "$AGENT_STATE_REPO" "$AGENT_STATE_TOKEN" "$release_id" "$TMP_DIR/manifest.json" "manifest.json"
 
