@@ -113,12 +113,24 @@ test('patchHermesTuiLazyInventorySource is idempotent', () => {
   assert.equal(twice, once);
 });
 
-test('patchHermesTuiLazyInventorySource hard-fails when upstream shape drifts', () => {
+test('patchHermesTuiLazyInventorySource skips atomically when upstream shape drifts', () => {
   const drifted = `DESKTOP_BACKEND_CONTRACT = 2
 
 
 def _session_info(agent, session=None):
     return {}
 `;
-  assert.throws(() => patchHermesTuiLazyInventorySource(drifted), /expected .* needle not found/);
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (msg) => warnings.push(String(msg));
+  try {
+    // Cosmetic patch: a needle miss on a newer Hermes must return the source
+    // untouched (no partial application) instead of throwing — a throw here
+    // crash-looped the fleet's hermes containers on the v0.18.0 rollout.
+    assert.equal(patchHermesTuiLazyInventorySource(drifted), drifted);
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.ok(warnings.some((msg) => /needle not found/.test(msg)));
+  assert.ok(warnings.some((msg) => /Skipping Hermes TUI lazy inventory patch/.test(msg)));
 });
