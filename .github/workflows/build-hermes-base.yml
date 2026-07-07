@@ -75,4 +75,4 @@ jobs:
             type=gha
           cache-to: |
             type=registry,ref=ghcr.io/leebaroneau/hermes-base:buildcache,mode=max
-            type=gha,mode=max
+            type=gha,mode=max,ignore-error=true

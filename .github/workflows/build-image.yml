@@ -101,7 +101,7 @@ jobs:
             type=gha
           cache-to: |
             type=registry,ref=ghcr.io/leebaroneau/template-agent:buildcache,mode=max
-            type=gha,mode=max
+            type=gha,mode=max,ignore-error=true
 
       - name: Audit blank image
         run: |

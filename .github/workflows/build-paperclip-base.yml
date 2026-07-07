@@ -95,4 +95,4 @@ jobs:
             type=gha
           cache-to: |
             type=registry,ref=ghcr.io/leebaroneau/paperclip-base:buildcache,mode=max
-            type=gha,mode=max
+            type=gha,mode=max,ignore-error=true
