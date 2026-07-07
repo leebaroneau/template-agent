@@ -88,10 +88,23 @@ resolve_containers() {
   PAPERCLIP_CONTAINER="$(docker ps --filter "name=paperclip-${AGENT_STATE_COMPOSE_FILTER}" --format '{{.Names}}' | head -1)"
   HERMES_CONTAINER="$(docker ps --filter "name=hermes-${AGENT_STATE_COMPOSE_FILTER}" --format '{{.Names}}' | head -1)"
 
-  if [[ -z "$PAPERCLIP_CONTAINER" || -z "$HERMES_CONTAINER" ]]; then
-    log "ERROR: containers not running (paperclip=$PAPERCLIP_CONTAINER, hermes=$HERMES_CONTAINER); aborting"
+  if [[ -z "$HERMES_CONTAINER" ]]; then
+    log "ERROR: hermes container not running (paperclip=$PAPERCLIP_CONTAINER, hermes=$HERMES_CONTAINER); aborting"
     return 1
   fi
+}
+
+# The paperclip service is absent (scaled to 0) or idle when PAPERCLIP_ENABLED
+# is not truthy — its postgres never starts, so a DB dump can only fail. The
+# Hermes archive is still taken fail-closed. Mirrors entrypoint.sh's truthy set.
+paperclip_active() {
+  [[ -n "$PAPERCLIP_CONTAINER" ]] || return 1
+  local enabled
+  enabled="$(docker exec "$PAPERCLIP_CONTAINER" sh -c 'printf %s "${PAPERCLIP_ENABLED:-0}"' 2>/dev/null || printf 0)"
+  case "$enabled" in
+    1|true|TRUE|True|yes|YES|Yes|on|ON|On) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 dump_paperclip_db() {
@@ -147,12 +160,21 @@ source_commit=$(source_commit)"
   log "=== Starting release backup for brand=$AGENT_STATE_BRAND release=$tag ==="
 
   resolve_containers
-  dump_paperclip_db "$TMP_DIR"
+  local -a backup_files=()
+  if paperclip_active; then
+    dump_paperclip_db "$TMP_DIR"
+    backup_files+=("$TMP_DIR/paperclip-db.sql.gz")
+  else
+    log "Paperclip disabled or not running (container=${PAPERCLIP_CONTAINER:-none}); skipping Paperclip DB dump."
+  fi
   build_hermes_archive "$TMP_DIR"
+  backup_files+=("$TMP_DIR/hermes-profiles.tar.gz")
 
   release_id="$(release_backup_create_or_reuse_release "$AGENT_STATE_REPO" "$AGENT_STATE_TOKEN" "$tag" "$release_name" "$release_body")"
-  upload_and_verify_asset "$release_id" "$TMP_DIR/paperclip-db.sql.gz" "paperclip-db.sql.gz"
-  upload_and_verify_asset "$release_id" "$TMP_DIR/hermes-profiles.tar.gz" "hermes-profiles.tar.gz"
+  local backup_file
+  for backup_file in "${backup_files[@]}"; do
+    upload_and_verify_asset "$release_id" "$backup_file" "$(basename "$backup_file")"
+  done
 
   release_backup_write_manifest \
     "$TMP_DIR/manifest.json" \
@@ -163,8 +185,7 @@ source_commit=$(source_commit)"
     "$AGENT_STATE_REPO" \
     "host-nightly" \
     "$(source_commit)" \
-    "$TMP_DIR/paperclip-db.sql.gz" \
-    "$TMP_DIR/hermes-profiles.tar.gz"
+    "${backup_files[@]}"
 
   upload_and_verify_asset "$release_id" "$TMP_DIR/manifest.json" "manifest.json"
 
