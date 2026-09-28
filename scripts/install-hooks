@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+hooks_dir="$repo_root/.git/hooks"
+if [[ ! -d "$hooks_dir" ]]; then
+  echo "install-hooks: .git/hooks not found; run inside a git worktree" >&2
+  exit 1
+fi
+
+hook="$hooks_dir/pre-push"
+legacy="$hooks_dir/pre-push.before-template-harness"
+marker="# template-harness pre-push"
+
+if [[ -f "$hook" ]] && ! grep -Fq "$marker" "$hook"; then
+  if [[ -e "$legacy" ]]; then
+    echo "install-hooks: $legacy already exists; refusing to overwrite an existing hook backup" >&2
+    exit 1
+  fi
+  mv "$hook" "$legacy"
+  chmod +x "$legacy"
+fi
+
+cat > "$hook" <<'HOOK'
+#!/usr/bin/env bash
+set -euo pipefail
+# template-harness pre-push
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+if [[ "${SKIP_HARNESS_HOOKS:-}" == "1" ]]; then
+  echo "template-harness pre-push: skipped by SKIP_HARNESS_HOOKS=1"
+else
+  if [[ -x scripts/ci-local ]]; then
+    ./scripts/ci-local
+  else
+    ./scripts/doctor
+  fi
+fi
+
+legacy_hook="$repo_root/.git/hooks/pre-push.before-template-harness"
+if [[ -x "$legacy_hook" ]]; then
+  "$legacy_hook" "$@"
+fi
+HOOK
+
+chmod +x "$hook"
+echo "install-hooks: installed template-harness pre-push hook"

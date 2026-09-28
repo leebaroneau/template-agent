@@ -19,6 +19,8 @@ brand secrets).
 npm test                                             # template test suite (node --test + shell checks; no image build)
 docker compose --env-file .env.example config -q     # compose valid against the documented contract
 ./scripts/doctor                                     # full local gate (run before pushing) — wraps the above
+./scripts/ci-local                                 # same local gate, intended for pre-push hooks
+./scripts/install-hooks                            # install local pre-push gate
 
 # When changing the image build:
 docker compose -f compose.yaml -f compose.build.yaml --env-file .env.example build
@@ -37,7 +39,7 @@ docker compose -f compose.yaml -f compose.build.yaml --env-file .env.example bui
 
 ## Testing instructions
 
-- `./scripts/doctor` is the hard gate. Wraps the template test suite, compose-contract validation,
+- `./scripts/doctor` is the local hard gate. Wraps the template test suite, compose-contract validation,
   Coolify routing/healthcheck guardrails, `repo.harness.json` schema validation, and cross-link
   validation across `docs/`. It does NOT build the full agent-stack image — that is owned by
   `.github/workflows/build-image.yml` on merge to `main`.
@@ -54,6 +56,7 @@ docker compose -f compose.yaml -f compose.build.yaml --env-file .env.example bui
 ## Commit and PR format
 
 - Issue → branch → PR (Pipeline Core). Branch prefix matches issue type (`bug|story|task|spike|experiment|epic`). PR body includes `Fixes #<issue>`.
+- Run `./scripts/doctor` locally before push/PR. GitHub Actions are reserved for Pipeline Core workflow management and real deploy automation, not harness check duplication.
 - Push to `main` builds + publishes the image (`:latest` + `:sha-<commit>`). Consuming brands self-deploy; do NOT add brand deploy triggers here.
 
 ## Development environment

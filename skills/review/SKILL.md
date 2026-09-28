@@ -10,7 +10,7 @@ Use after staging changes, before opening / updating a PR.
 ## Steps
 
 1. `git diff --stat` — print files touched.
-2. `./scripts/doctor` — full CI gate. Must pass before continuing.
+2. `./scripts/doctor` — full local gate. Must pass before continuing.
 3. For each touched file under `docs/`, confirm cross-links resolve (the doctor handles this; do not bypass).
 4. Inspect `repo.harness.json` — if any platform/runtime/deploy assumption changed, the contract must reflect it.
 5. Check no `.env` / secrets staged: `git diff --cached --name-only | grep -E '(^|/)\.env(\.|$)' && echo SECRET STAGED && exit 1`.
